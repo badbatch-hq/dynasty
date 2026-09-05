@@ -1044,7 +1044,7 @@
               <option value="team-wins">Team Win Total</option>
               <option value="matchup-winner">Matchup Winner</option>
               <option value="stat-milestone">Player Stat Milestone</option>
-              <option value="trade-happens">A Trade Will Happen</option>
+              <option value="trade-happens">Trade</option>
             </select>
           </div>
         </div>
@@ -1161,7 +1161,7 @@
         <option value="team-wins">Team Win Total</option>
         <option value="matchup-winner">Matchup Winner</option>
         <option value="stat-milestone">Player Stat Milestone</option>
-        <option value="trade-happens">A Trade Will Happen</option>
+        <option value="trade-happens">Trade</option>
         <option value="legacy-import">Archive (old)</option>
       </select>
       <select id="prophecy-user-filter">
@@ -1489,14 +1489,22 @@ function buildAllMatchups() {
       for (const [mid, entries] of Object.entries(byMatchup)) {
         if (entries.length < 2) continue;
         const [a, b] = entries;
+        const pts1 = a.points || 0;
+        const pts2 = b.points || 0;
+        // Sleeper still returns a placeholder entry (both sides at 0) for a
+        // week that's on the schedule but hasn't been played yet. Skip it —
+        // otherwise it gets counted as a decided game everywhere this feeds
+        // (H2H, win streaks, all-time records). A real 0-0 tie between two
+        // set lineups is effectively impossible, so this is a safe filter.
+        if (pts1 === 0 && pts2 === 0) continue;
         state.allMatchups.push({
           season,
           week,
           matchup_id: mid,
           roster1: a.roster_id,
           roster2: b.roster_id,
-          pts1: a.points || 0,
-          pts2: b.points || 0,
+          pts1,
+          pts2,
         });
       }
     }
