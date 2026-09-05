@@ -332,6 +332,31 @@
 
   select option { background: var(--surface2); }
 
+  input[type="number"], textarea {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    padding: 8px 12px;
+    outline: none;
+    transition: border-color 0.15s;
+    width: 100%;
+  }
+  input[type="number"]:focus, textarea:focus { border-color: var(--accent); }
+  textarea { resize: vertical; }
+
+  label.field-label {
+    display: block;
+    font-size: 11px;
+    font-family: 'DM Mono', monospace;
+    color: var(--muted);
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+
   /* BUTTONS */
   .btn {
     background: var(--accent);
@@ -523,6 +548,15 @@
     margin-top: 2px;
   }
 
+  .robber-baron-banner.banner-danger {
+    background: linear-gradient(135deg, rgba(200,75,75,0.1), rgba(200,75,75,0.05));
+    border-color: rgba(200,75,75,0.3);
+  }
+
+  .robber-baron-banner.banner-danger .robber-baron-title {
+    color: var(--danger);
+  }
+
   /* HISTORY PAGE */
   .season-block {
     margin-bottom: 32px;
@@ -549,6 +583,47 @@
 
   .empty-icon { font-size: 48px; margin-bottom: 12px; }
   .empty p { font-size: 13px; }
+
+  /* PROPHECIES PAGE */
+  .prophecy-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--dim);
+    border-radius: 10px;
+    padding: 14px 18px;
+    margin-bottom: 10px;
+  }
+  .prophecy-card.status-hit { border-left-color: var(--success); }
+  .prophecy-card.status-miss { border-left-color: var(--danger); }
+
+  .prophecy-player-search-wrap { position: relative; }
+  .prophecy-player-results {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 5;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    list-style: none;
+    margin: 4px 0 0;
+    padding: 0;
+    max-height: 180px;
+    overflow-y: auto;
+  }
+  .prophecy-player-results li {
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .prophecy-player-results li:hover { background: var(--dim); }
+
+  .prophecy-filter.active {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: rgba(200,168,75,0.1);
+  }
 
   /* CACHE NOTICE */
   .cache-bar {
@@ -666,6 +741,7 @@
     nav button[onclick*="h2h"]::before       { content: '⚔️'; }
     nav button[onclick*="trades"]::before    { content: '🤝'; }
     nav button[onclick*="draftorder"]::before { content: '🎯'; }
+    nav button[onclick*="prophecies"]::before { content: '🔮'; }
 
     /* Main content — add bottom padding for fixed nav */
     main {
@@ -764,6 +840,7 @@
     <button onclick="showPage('h2h')">H2H</button>
     <button onclick="showPage('trades')">Trades</button>
     <button onclick="showPage('draftorder')">Draft Order</button>
+    <button onclick="showPage('prophecies')">Prophecies</button>
   </nav>
 </header>
 
@@ -926,9 +1003,9 @@
     <div class="card fade-up" style="margin-bottom:24px;font-size:12px;color:var(--muted);line-height:1.7;">
       <strong style="color:var(--text);">How this is ordered:</strong><br>
       Picks 1–6 go to the teams that missed the playoffs, worst regular-season optimal lineup total first.<br>
-      Picks 7–8 go to whoever finishes 5th and 6th (the "no money on the line" playoff round), lower optimal total picks first.<br>
+      Picks 7–8 go to whoever finishes 5th and 6th, lower optimal total picks first.<br>
       Picks 9–12 go in reverse order of final playoff finish — champion always picks last.<br>
-      "Optimal" points = the best possible lineup each week from everyone on the roster (bench included), same math as Sleeper's own weekly optimal-score report, totaled across the regular season.
+      Optimal points = the best possible lineup each week from everyone on the roster, bench included
     </div>
 
     <div id="draftorder-content">
@@ -936,6 +1013,175 @@
         <div class="empty-icon">🎯</div>
         <p>Loading draft order data...</p>
       </div>
+    </div>
+  </div>
+
+  <!-- PROPHECIES PAGE -->
+  <div class="page" id="page-prophecies">
+    <div class="page-header fade-up">
+      <h1>Prophecies</h1>
+      <p>Make the call. Are you a Sleeper Seer or a total bust?</p>
+    </div>
+
+    <div id="prophecy-top-seer"></div>
+    <div id="prophecy-worst-predictor"></div>
+
+    <div class="card fade-up" style="margin-bottom:24px;">
+      <div class="card-title">New Prophecy</div>
+      <form id="prophecy-form">
+        <div class="grid-2" style="margin-bottom:12px;">
+          <div>
+            <label class="field-label">Your name</label>
+            <select id="prophecy-username" required style="width:100%;">
+              <option value="">Select your name...</option>
+            </select>
+          </div>
+          <div>
+            <label class="field-label">Category</label>
+            <select id="prophecy-category" style="width:100%;">
+              <option value="trash-talk">Trash Talk / General</option>
+              <option value="playoff-finish">Playoff Finish</option>
+              <option value="team-wins">Team Win Total</option>
+              <option value="matchup-winner">Matchup Winner</option>
+              <option value="stat-milestone">Player Stat Milestone</option>
+              <option value="trade-happens">A Trade Will Happen</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid-2" data-category-fields="playoff-finish,team-wins,matchup-winner,trade-happens" style="margin-bottom:12px;">
+          <div>
+            <label class="field-label">Team</label>
+            <select id="prophecy-team" data-team-picker style="width:100%;"></select>
+          </div>
+        </div>
+
+        <div class="grid-2" data-category-fields="playoff-finish" style="margin-bottom:12px;">
+          <div>
+            <label class="field-label">Finishes</label>
+            <select id="prophecy-rank-operator" style="width:100%;">
+              <option value="<=">Top</option>
+              <option value="==">Exactly</option>
+              <option value=">=">No better than</option>
+            </select>
+          </div>
+          <div>
+            <label class="field-label">Rank</label>
+            <input type="number" id="prophecy-rank-value" min="1" max="12" placeholder="e.g. 2">
+          </div>
+        </div>
+
+        <div class="grid-2" data-category-fields="team-wins" style="margin-bottom:12px;">
+          <div>
+            <label class="field-label">Wins</label>
+            <select id="prophecy-wins-operator" style="width:100%;">
+              <option value=">=">At least</option>
+              <option value="==">Exactly</option>
+              <option value="<=">At most</option>
+            </select>
+          </div>
+          <div>
+            <label class="field-label">Count</label>
+            <input type="number" id="prophecy-wins-value" min="0" max="17" placeholder="e.g. 10">
+          </div>
+        </div>
+
+        <div class="grid-2" data-category-fields="matchup-winner" style="margin-bottom:12px;">
+          <div>
+            <label class="field-label">Week</label>
+            <input type="number" id="prophecy-week" min="1" max="18" placeholder="e.g. 5">
+          </div>
+        </div>
+
+        <div class="grid-2" data-category-fields="trade-happens" style="margin-bottom:12px;">
+          <div>
+            <label class="field-label">Trades with</label>
+            <select id="prophecy-team-b" data-team-picker style="width:100%;"></select>
+          </div>
+        </div>
+
+        <div class="grid-2" data-category-fields="stat-milestone" style="margin-bottom:12px;">
+          <div class="prophecy-player-search-wrap">
+            <label class="field-label">Player</label>
+            <input type="text" id="prophecy-player-search" placeholder="Start typing a name...">
+            <ul id="prophecy-player-results" class="prophecy-player-results"></ul>
+          </div>
+          <div>
+            <label class="field-label">By week (blank = full season)</label>
+            <input type="number" id="prophecy-stat-week" min="1" max="18" placeholder="e.g. 10">
+          </div>
+        </div>
+        <div class="grid-2" data-category-fields="stat-milestone" style="margin-bottom:12px;">
+          <div>
+            <label class="field-label">Stat</label>
+            <select id="prophecy-stat-key" style="width:100%;">
+              <option value="pts_ppr">Fantasy Points (PPR)</option>
+              <option value="rush_yd">Rushing Yards</option>
+              <option value="rec_yd">Receiving Yards</option>
+              <option value="pass_yd">Passing Yards</option>
+              <option value="rush_td">Rushing TDs</option>
+              <option value="rec_td">Receiving TDs</option>
+              <option value="pass_td">Passing TDs</option>
+              <option value="rec">Receptions</option>
+            </select>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <div style="flex:1;">
+              <label class="field-label">Threshold</label>
+              <select id="prophecy-stat-operator" style="width:100%;">
+                <option value=">=">At least</option>
+                <option value="<=">At most</option>
+              </select>
+            </div>
+            <div style="flex:1;">
+              <label class="field-label">Value</label>
+              <input type="number" id="prophecy-stat-value" placeholder="e.g. 1500">
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-bottom:14px;">
+          <label class="field-label">Your prophecy, in words</label>
+          <textarea id="prophecy-text" required placeholder="e.g. Joe's team chokes in Week 12 against a team missing 3 starters."></textarea>
+        </div>
+
+        <button type="submit" class="btn">Submit Prophecy</button>
+      </form>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center;" class="fade-up">
+      <button type="button" class="btn btn-ghost prophecy-filter active" data-prophecy-filter="all">All</button>
+      <button type="button" class="btn btn-ghost prophecy-filter" data-prophecy-filter="pending">Pending</button>
+      <button type="button" class="btn btn-ghost prophecy-filter" data-prophecy-filter="hit">Hits</button>
+      <button type="button" class="btn btn-ghost prophecy-filter" data-prophecy-filter="miss">Misses</button>
+      <select id="prophecy-category-filter" style="margin-left:auto;">
+        <option value="all">All Categories</option>
+        <option value="trash-talk">Trash Talk / General</option>
+        <option value="playoff-finish">Playoff Finish</option>
+        <option value="team-wins">Team Win Total</option>
+        <option value="matchup-winner">Matchup Winner</option>
+        <option value="stat-milestone">Player Stat Milestone</option>
+        <option value="trade-happens">A Trade Will Happen</option>
+        <option value="legacy-import">Archive (old)</option>
+      </select>
+      <select id="prophecy-user-filter">
+        <option value="all">All Predictors</option>
+      </select>
+      <select id="prophecy-season-filter">
+        <option value="all">All Seasons</option>
+      </select>
+    </div>
+
+    <div id="prophecy-list" class="fade-up" style="margin-bottom:24px;">
+      <div class="empty">
+        <div class="empty-icon">🔮</div>
+        <p>Loading prophecies...</p>
+      </div>
+    </div>
+
+    <div class="card fade-up">
+      <div class="card-title">Prophet Accuracy</div>
+      <div id="prophecy-leaderboard"></div>
     </div>
   </div>
 
@@ -1525,6 +1771,7 @@ function showPage(name) {
   if (name === 'h2h') renderH2HPage();
   if (name === 'trades') renderTradesPage();
   if (name === 'draftorder') renderDraftOrderPage();
+  if (name === 'prophecies') renderPropheciesPage();
 }
 
 // ============================================================
@@ -2200,6 +2447,400 @@ function getPlayerName(playerId) {
 
 function getPlayerPosition(playerId) {
   return (playerInfo[playerId] && playerInfo[playerId].pos) || null;
+}
+
+// ============================================================
+// PROPHECIES
+// ============================================================
+// Talks to a Google Apps Script Web App (backed by a Sheet) for storing and
+// resolving predictions — see Code.gs. Loaded lazily when the tab is first
+// opened rather than during the main app load, since it's an independent,
+// possibly-slower external call.
+const PROPHECY_CONFIG = {
+  APPS_SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbwQ6o0FuilhOE10exPMzoTlN3msZNdNAMYeGOz3UOR970wL2j874MVobN4VrVTcHgaP/exec',
+};
+
+let _propheciesLoaded = false;
+let _propheciesFormWired = false;
+let _allPredictions = [];
+
+function renderPropheciesPage() {
+  populateTeamPickers();
+  populateUserPicker();
+  wirePropheciesFormHandlers();
+  if (!_propheciesLoaded) {
+    _propheciesLoaded = true;
+    refreshPredictionsList();
+  }
+}
+
+function populateTeamPickers() {
+  const options = getAllManagers()
+    .map(m => ({ id: m.roster_id, label: m.team_name }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+
+  document.querySelectorAll('[data-team-picker]').forEach(select => {
+    if (select.options.length > 1) return; // already populated
+    select.innerHTML = '<option value="">Select a team...</option>' +
+      options.map(o => `<option value="${o.id}">${escapeHtml(o.label)}</option>`).join('');
+  });
+}
+
+// League members' Sleeper names, for the "Who's predicting" dropdown — avoids
+// typos/inconsistent spelling splitting one person across the leaderboard.
+function populateUserPicker() {
+  const select = document.querySelector('#prophecy-username');
+  if (!select || select.options.length > 1) return; // already populated
+  const names = getAllManagers()
+    .map(m => m.display_name)
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b));
+  select.innerHTML = '<option value="">Select your name...</option>' +
+    names.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
+}
+
+function searchPlayersForProphecy(query) {
+  if (!query || query.length < 2) return [];
+  const q = query.toLowerCase();
+  const skillPositions = ['QB', 'RB', 'WR', 'TE', 'K'];
+  return Object.entries(playerInfo)
+    .filter(([, p]) => p.name && skillPositions.includes(p.pos) && p.name.toLowerCase().includes(q))
+    .slice(0, 8)
+    .map(([id, p]) => ({ id, label: `${p.name} (${p.pos}${p.team ? ' - ' + p.team : ''})` }));
+}
+
+function wirePropheciesFormHandlers() {
+  if (_propheciesFormWired) return;
+  _propheciesFormWired = true;
+
+  const categorySelect = document.querySelector('#prophecy-category');
+  categorySelect.addEventListener('change', updateProphecyFormFields);
+  updateProphecyFormFields();
+
+  const playerSearch = document.querySelector('#prophecy-player-search');
+  playerSearch.addEventListener('input', (e) => {
+    const results = searchPlayersForProphecy(e.target.value);
+    const list = document.querySelector('#prophecy-player-results');
+    list.innerHTML = results.map(r =>
+      `<li data-player-id="${r.id}" data-player-label="${escapeHtml(r.label)}">${escapeHtml(r.label)}</li>`
+    ).join('');
+    list.querySelectorAll('li').forEach(li => {
+      li.addEventListener('click', () => {
+        playerSearch.value = li.dataset.playerLabel;
+        playerSearch.dataset.selectedId = li.dataset.playerId;
+        list.innerHTML = '';
+      });
+    });
+  });
+
+  document.querySelector('#prophecy-form').addEventListener('submit', handleProphecySubmit);
+
+  document.querySelectorAll('.prophecy-filter').forEach(btn => btn.addEventListener('click', () => {
+    document.querySelectorAll('.prophecy-filter').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    renderPredictions();
+  }));
+
+  document.querySelector('#prophecy-category-filter').addEventListener('change', () => renderPredictions());
+  document.querySelector('#prophecy-user-filter').addEventListener('change', () => renderPredictions());
+  document.querySelector('#prophecy-season-filter').addEventListener('change', () => renderPredictions());
+}
+
+function updateProphecyFormFields() {
+  const category = document.querySelector('#prophecy-category').value;
+  document.querySelectorAll('[data-category-fields]').forEach(el => {
+    el.style.display = el.dataset.categoryFields.split(',').includes(category) ? '' : 'none';
+  });
+}
+
+async function apiListPredictions() {
+  const resp = await fetch(`${PROPHECY_CONFIG.APPS_SCRIPT_URL}?action=list`);
+  const data = await resp.json();
+  return data.ok ? data.predictions : [];
+}
+
+// NOTE: no explicit Content-Type header on this POST — that's deliberate.
+// Leaving it out makes the browser default to text/plain, which keeps this a
+// CORS "simple request" (no preflight), and Apps Script's doPost still parses
+// the JSON body fine via e.postData.contents.
+async function apiSubmitPrediction(payload) {
+  const resp = await fetch(PROPHECY_CONFIG.APPS_SCRIPT_URL, {
+    method: 'POST',
+    body: JSON.stringify({ action: 'submit', ...payload }),
+  });
+  return resp.json();
+}
+
+async function handleProphecySubmit(e) {
+  e.preventDefault();
+  const form = e.target;
+  const username = form.querySelector('#prophecy-username').value.trim();
+  const category = form.querySelector('#prophecy-category').value;
+  const predictionText = form.querySelector('#prophecy-text').value.trim();
+  if (!username || !predictionText) return;
+
+  let type = 'freeform', checkType = 'none', checkParams = {};
+
+  if (category === 'playoff-finish') {
+    type = 'structured'; checkType = 'standings_rank';
+    checkParams = {
+      rosterId: form.querySelector('#prophecy-team').value,
+      operator: form.querySelector('#prophecy-rank-operator').value,
+      rank: form.querySelector('#prophecy-rank-value').value,
+    };
+  } else if (category === 'team-wins') {
+    type = 'structured'; checkType = 'team_wins';
+    checkParams = {
+      rosterId: form.querySelector('#prophecy-team').value,
+      operator: form.querySelector('#prophecy-wins-operator').value,
+      value: form.querySelector('#prophecy-wins-value').value,
+    };
+  } else if (category === 'matchup-winner') {
+    type = 'structured'; checkType = 'matchup_winner';
+    checkParams = {
+      week: form.querySelector('#prophecy-week').value,
+      rosterId: form.querySelector('#prophecy-team').value,
+    };
+  } else if (category === 'stat-milestone') {
+    type = 'structured'; checkType = 'player_stat';
+    checkParams = {
+      week: form.querySelector('#prophecy-stat-week').value || 'season',
+      playerId: form.querySelector('#prophecy-player-search').dataset.selectedId,
+      statKey: form.querySelector('#prophecy-stat-key').value,
+      operator: form.querySelector('#prophecy-stat-operator').value,
+      value: form.querySelector('#prophecy-stat-value').value,
+    };
+  } else if (category === 'trade-happens') {
+    type = 'structured'; checkType = 'trade_happens';
+    checkParams = {
+      rosterIdA: form.querySelector('#prophecy-team').value,
+      rosterIdB: form.querySelector('#prophecy-team-b').value,
+    };
+  }
+  // 'trash-talk' stays freeform with no checkParams.
+
+  const submitBtn = form.querySelector('button[type="submit"]');
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Submitting...';
+
+  const currentSeason = state.league?.season || KNOWN_LATEST_SEASON;
+  let result;
+  try {
+    result = await apiSubmitPrediction({
+      username, category, predictionText, type, checkType, checkParams,
+      season: currentSeason,
+      week: checkParams.week || 'season',
+    });
+  } catch (err) {
+    result = { ok: false, error: 'Network error — is the Apps Script URL reachable?' };
+  }
+
+  submitBtn.disabled = false;
+  submitBtn.textContent = 'Submit Prophecy';
+
+  if (result.ok) {
+    form.reset();
+    delete form.querySelector('#prophecy-player-search').dataset.selectedId;
+    updateProphecyFormFields();
+    await refreshPredictionsList();
+  } else {
+    alert('Something went wrong: ' + (result.error || 'unknown error'));
+  }
+}
+
+async function refreshPredictionsList() {
+  const container = document.querySelector('#prophecy-list');
+  try {
+    _allPredictions = await apiListPredictions();
+  } catch (e) {
+    container.innerHTML = `<div class="empty"><div class="empty-icon">🔮</div><p>Couldn't reach the Prophecies backend — try refreshing.</p></div>`;
+    console.warn('Failed to load predictions:', e);
+    return;
+  }
+  populatePredictionFilters();
+  renderPredictions();
+  renderLeaderboard();
+  renderTopSeer();
+  renderWorstPredictor();
+}
+
+// Builds the Predictor filter from the same canonical Sleeper owner list used
+// by the "Your name" dropdown (getAllManagers), so it stays a clean, stable
+// list of real names rather than whatever raw strings happen to be in the
+// data. Any leftover username in the data that isn't a current owner (e.g. an
+// old legacy name that was intentionally left unmapped) is still appended so
+// it doesn't just vanish from the filter.
+function populatePredictionFilters() {
+  const userSelect = document.querySelector('#prophecy-user-filter');
+  const seasonSelect = document.querySelector('#prophecy-season-filter');
+  if (!userSelect || !seasonSelect) return;
+
+  const canonicalUsers = getAllManagers().map(m => m.display_name).filter(Boolean);
+  const strayUsers = [...new Set(_allPredictions.map(p => p.username).filter(Boolean))]
+    .filter(u => !canonicalUsers.includes(u));
+  const users = [...canonicalUsers, ...strayUsers].sort((a, b) => a.localeCompare(b));
+  const seasons = [...new Set(_allPredictions.map(p => p.season).filter(Boolean))].sort((a, b) => b.localeCompare(a));
+
+  const prevUser = userSelect.value;
+  userSelect.innerHTML = '<option value="all">All Predictors</option>' +
+    users.map(u => `<option value="${escapeHtml(u)}">${escapeHtml(u)}</option>`).join('');
+  if (users.includes(prevUser)) userSelect.value = prevUser;
+
+  const prevSeason = seasonSelect.value;
+  seasonSelect.innerHTML = '<option value="all">All Seasons</option>' +
+    seasons.map(s => `<option value="${escapeHtml(s)}">${s === 'legacy' ? 'Archive' : escapeHtml(s)}</option>`).join('');
+  if (seasons.includes(prevSeason)) seasonSelect.value = prevSeason;
+}
+
+function renderPredictions() {
+  const container = document.querySelector('#prophecy-list');
+  if (!container) return;
+
+  const status = document.querySelector('.prophecy-filter.active')?.dataset.prophecyFilter || 'all';
+  const category = document.querySelector('#prophecy-category-filter')?.value || 'all';
+  const user = document.querySelector('#prophecy-user-filter')?.value || 'all';
+  const season = document.querySelector('#prophecy-season-filter')?.value || 'all';
+
+  let list = _allPredictions.slice().sort((a, b) => new Date(b.dateSubmitted || 0) - new Date(a.dateSubmitted || 0));
+  if (status !== 'all') list = list.filter(p => p.status === status);
+  if (category !== 'all') list = list.filter(p => p.category === category);
+  if (user !== 'all') list = list.filter(p => p.username === user);
+  if (season !== 'all') list = list.filter(p => p.season === season);
+
+  if (list.length === 0) {
+    const msg = _allPredictions.length === 0
+      ? 'No prophecies here yet. Speak one into existence above.'
+      : 'No prophecies match these filters.';
+    container.innerHTML = `<div class="empty"><div class="empty-icon">🔮</div><p>${msg}</p></div>`;
+    return;
+  }
+
+  container.innerHTML = list.map(renderPredictionCard).join('');
+}
+
+function renderPredictionCard(p) {
+  const statusClass = { hit: 'status-hit', miss: 'status-miss' }[p.status] || '';
+  const statusBadge = p.status === 'hit' ? '<span class="badge badge-green">Hit</span>'
+    : p.status === 'miss' ? '<span class="badge badge-red">Miss</span>'
+    : '<span class="badge">Pending</span>';
+  const seasonLabel = p.season === 'legacy' ? 'Archive' : `${p.season}${p.week && p.week !== 'season' ? ' · Week ' + p.week : ''}`;
+
+  return `
+    <div class="prophecy-card ${statusClass}">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <span class="team-name">${escapeHtml(p.username)}</span>
+        ${statusBadge}
+      </div>
+      <div style="font-size:13px;line-height:1.5;margin-bottom:6px;">${escapeHtml(p.predictionText)}</div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);font-family:'DM Mono',monospace;">
+        <span>${escapeHtml(seasonLabel)}</span>
+        <span>${p.dateSubmitted ? new Date(p.dateSubmitted).toLocaleDateString() : ''}</span>
+      </div>
+      ${p.status !== 'pending' && p.resolvedNote ? `<div style="margin-top:6px;font-size:12px;color:var(--muted);font-style:italic;">${escapeHtml(p.resolvedNote)}</div>` : ''}
+    </div>`;
+}
+
+function renderLeaderboard() {
+  const container = document.querySelector('#prophecy-leaderboard');
+  if (!container) return;
+
+  const byUser = {};
+  _allPredictions.forEach(p => {
+    if (!byUser[p.username]) byUser[p.username] = { hit: 0, miss: 0, pending: 0 };
+    if (byUser[p.username][p.status] !== undefined) byUser[p.username][p.status]++;
+  });
+
+  const rows = Object.entries(byUser).map(([username, stats]) => {
+    const total = stats.hit + stats.miss;
+    const rate = total > 0 ? Math.round((stats.hit / total) * 100) : null;
+    return { username, ...stats, total, rate };
+  }).sort((a, b) => (b.rate ?? -1) - (a.rate ?? -1));
+
+  if (rows.length === 0) {
+    container.innerHTML = `<p style="color:var(--muted);font-size:12px;">No resolved prophecies yet.</p>`;
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Prophet</th><th>Hit</th><th>Miss</th><th>Rate</th></tr></thead>
+        <tbody>
+          ${rows.map(r => `<tr>
+            <td class="team-name">${escapeHtml(r.username)}</td>
+            <td class="win">${r.hit}</td>
+            <td class="loss">${r.miss}</td>
+            <td style="font-family:'DM Mono',monospace;font-size:12px;">${r.rate !== null ? r.rate + '%' : '—'}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+// Same visual treatment as the Trades page's Robber Baron banner. Requires a
+// minimum number of resolved calls so one lucky freeform guess can't crown
+// someone off a 1-for-1 record.
+const TOP_SEER_MIN_RESOLVED = 3;
+
+// Shared by both the best- and worst-predictor banners.
+function rankPredictorsByHitRate() {
+  const byUser = {};
+  _allPredictions.forEach(p => {
+    if (p.status !== 'hit' && p.status !== 'miss') return;
+    if (!byUser[p.username]) byUser[p.username] = { hit: 0, miss: 0 };
+    byUser[p.username][p.status]++;
+  });
+
+  return Object.entries(byUser)
+    .map(([username, s]) => ({ username, total: s.hit + s.miss, rate: s.hit / (s.hit + s.miss) }))
+    .filter(r => r.total >= TOP_SEER_MIN_RESOLVED);
+}
+
+function renderTopSeer() {
+  const container = document.querySelector('#prophecy-top-seer');
+  if (!container) return;
+
+  const ranked = rankPredictorsByHitRate().sort((a, b) => b.rate - a.rate || b.total - a.total);
+  if (ranked.length === 0) { container.innerHTML = ''; return; }
+  const top = ranked[0];
+
+  container.innerHTML = `
+    <div class="robber-baron-banner fade-up">
+      <div class="robber-baron-icon">🔮</div>
+      <div>
+        <div class="robber-baron-title">Crystal Baller — ${escapeHtml(top.username)}</div>
+        <div class="robber-baron-sub">${Math.round(top.rate * 100)}% hit rate over ${top.total} resolved prophecies</div>
+      </div>
+    </div>`;
+}
+
+// The other end of the same leaderboard. Needs at least two distinct
+// predictors with enough resolved calls, so it doesn't just re-crown the
+// same person as both best and worst when the pool is tiny.
+function renderWorstPredictor() {
+  const container = document.querySelector('#prophecy-worst-predictor');
+  if (!container) return;
+
+  const ranked = rankPredictorsByHitRate().sort((a, b) => a.rate - b.rate || b.total - a.total);
+  if (ranked.length < 2) { container.innerHTML = ''; return; }
+  const worst = ranked[0];
+
+  container.innerHTML = `
+    <div class="robber-baron-banner banner-danger fade-up">
+      <div class="robber-baron-icon">🃏</div>
+      <div>
+        <div class="robber-baron-title">False Prophet — ${escapeHtml(worst.username)}</div>
+        <div class="robber-baron-sub">${Math.round(worst.rate * 100)}% hit rate over ${worst.total} resolved prophecies</div>
+      </div>
+    </div>`;
+}
+
+// Predictions are free text from anyone with the URL — always escape before
+// dropping them into innerHTML.
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str ?? '';
+  return div.innerHTML;
 }
 
 // ============================================================
