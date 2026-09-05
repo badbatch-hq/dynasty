@@ -568,6 +568,126 @@
     color: var(--danger);
   }
 
+  /* LINKOUTS */
+  .linkout-row {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 24px;
+  }
+
+  .linkout-row a.btn-ghost {
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  /* POLLS */
+  .poll-voter-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  .poll-card {
+    margin-bottom: 20px;
+  }
+
+  .poll-card:last-child {
+    margin-bottom: 0;
+  }
+
+  .poll-question {
+    font-weight: 600;
+    margin-bottom: 10px;
+  }
+
+  .poll-option {
+    display: block;
+    width: 100%;
+    position: relative;
+    overflow: hidden;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    color: var(--text);
+    text-align: left;
+  }
+
+  .poll-option:hover {
+    border-color: var(--accent);
+  }
+
+  .poll-option-bar {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    background: rgba(200,168,75,0.15);
+    z-index: 0;
+    transition: width 0.2s;
+  }
+
+  .poll-option-label {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .poll-empty {
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  /* ANNOUNCEMENTS + CHANGELOG */
+  .announcement-item,
+  .changelog-item {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .announcement-item:last-child,
+  .changelog-item:last-child {
+    border-bottom: none;
+  }
+
+  .announcement-date {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .announcement-title {
+    font-weight: 600;
+    margin: 4px 0;
+  }
+
+  .announcement-body {
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  .changelog-group-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin: 20px 0 4px;
+  }
+
   /* HISTORY PAGE */
   .season-block {
     margin-bottom: 32px;
@@ -865,6 +985,18 @@
 
     <div id="dash-cache-bar"></div>
 
+    <!-- One-time "what's new" banner — see initWhatsNewBanner(). Points into
+         the Changelog tab, which is deliberately not in the nav bar. -->
+    <div class="robber-baron-banner fade-up" id="whats-new-banner" style="display:none;">
+      <div class="robber-baron-icon">✨</div>
+      <div style="flex:1;">
+        <div class="robber-baron-title">What's New</div>
+        <div class="robber-baron-sub">The dashboard just got an update.</div>
+      </div>
+      <button type="button" class="btn btn-ghost" id="whats-new-view">See what's new</button>
+      <button type="button" class="btn btn-ghost" id="whats-new-dismiss">Dismiss</button>
+    </div>
+
     <!-- Summary stats -->
     <div class="grid-4 stagger" id="dash-stats" style="margin-bottom:24px;">
       <div class="stat-pill">
@@ -906,6 +1038,32 @@
             <tr><td colspan="8" style="text-align:center;color:var(--muted);padding:32px;">Loading standings...</td></tr>
           </tbody>
         </table>
+      </div>
+    </div>
+
+    <!-- Linkouts -->
+    <div class="linkout-row fade-up" id="dash-linkouts"></div>
+
+    <!-- Polls -->
+    <div class="card fade-up" style="margin-bottom:24px;">
+      <div class="card-title">Polls</div>
+      <div class="poll-voter-row">
+        <label class="field-label" style="margin:0;">Voting as</label>
+        <select id="poll-voter-name" style="width:auto;">
+          <option value="">Voting as...</option>
+        </select>
+      </div>
+      <div id="dash-polls">
+        <p class="poll-empty">Loading polls...</p>
+      </div>
+    </div>
+
+    <!-- Announcements -->
+    <div class="card fade-up" style="margin-bottom:24px;">
+      <div class="card-title">League News</div>
+      <div id="dash-announcements"></div>
+      <div style="margin-top:12px;">
+        <a href="#" onclick="showPage('changelog'); return false;" style="font-size:12px;color:var(--muted);">See full changelog →</a>
       </div>
     </div>
   </div>
@@ -1193,6 +1351,18 @@
       <div class="card-title">Prophet Accuracy</div>
       <div id="prophecy-leaderboard"></div>
     </div>
+  </div>
+
+  <!-- CHANGELOG PAGE — intentionally NOT in the nav bar. Reached only via the
+       landing page's "See full changelog" link and the what's-new banner. -->
+  <div class="page" id="page-changelog">
+    <div class="page-header fade-up">
+      <h1>Changelog</h1>
+      <p>Past changes and patch notes</p>
+      <a href="#" onclick="showPage('dashboard'); return false;" style="font-size:12px;color:var(--muted);">← Back to Dashboard</a>
+    </div>
+
+    <div class="card fade-up" id="changelog-list"></div>
   </div>
 
 </main>
@@ -1781,7 +1951,12 @@ function showPage(name) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
   document.getElementById('page-' + name).classList.add('active');
-  event.target.classList.add('active');
+  // Highlight the matching nav button by name instead of relying on the
+  // global `event` object — lets non-nav callers (the landing page's "See
+  // full changelog" link, the what's-new banner) use showPage() too, since
+  // the Changelog tab is deliberately not in the nav bar.
+  const navBtn = document.querySelector(`nav button[onclick*="'${name}'"]`);
+  if (navBtn) navBtn.classList.add('active');
 
   // Render page content
   if (name === 'dashboard') renderDashboard();
@@ -1790,6 +1965,7 @@ function showPage(name) {
   if (name === 'trades') renderTradesPage();
   if (name === 'draftorder') renderDraftOrderPage();
   if (name === 'prophecies') renderPropheciesPage();
+  if (name === 'changelog') renderChangelog();
 }
 
 // ============================================================
@@ -1925,6 +2101,10 @@ function renderDashboard() {
       <td class="standings-col-streak ${streakClass}" style="font-family:'DM Mono',monospace;font-size:12px;">${streakStr}</td>
     </tr>`;
   }).join('');
+
+  renderLinkouts();
+  renderAnnouncements();
+  renderPolls();
 }
 
 function computeStreaks() {
@@ -2862,6 +3042,246 @@ function escapeHtml(str) {
 }
 
 // ============================================================
+// LANDING PAGE — LINKOUTS, ANNOUNCEMENTS, POLLS, CHANGELOG
+// ============================================================
+// Polls talk to the same Apps Script Web App as Prophecies (see Code.gs) —
+// one deployment, routed by the `action` param, rather than a second one.
+// Announcements and the Changelog are hardcoded arrays below that you edit
+// directly and commit, same workflow as the rest of this file — there's no
+// backend for either since both are "closer to static content."
+
+function escapeAttr(str) {
+  return String(str ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+}
+
+// ---------- Linkouts ----------
+// Fill in your real Slack invite link once you have it.
+const LINKOUTS = {
+  slackUrl: 'PUT-YOUR-SLACK-INVITE-LINK-HERE',
+  sleeperUrl: `https://sleeper.com/leagues/${LEAGUE_ID}`,
+};
+
+function renderLinkouts() {
+  const container = document.querySelector('#dash-linkouts');
+  if (!container) return;
+  container.innerHTML = `
+    <a class="btn btn-ghost" href="${escapeAttr(LINKOUTS.sleeperUrl)}" target="_blank" rel="noopener">🏈 Sleeper League</a>
+    <a class="btn btn-ghost" href="${escapeAttr(LINKOUTS.slackUrl)}" target="_blank" rel="noopener">💬 Slack</a>`;
+}
+
+// ---------- Announcements ----------
+// Newest first. Edit this array directly to post league news.
+const ANNOUNCEMENTS = [
+  // { date: '2026-09-05', title: 'Dashboard got a makeover', body: 'Polls, a news feed, and quick links live here now.' },
+];
+
+function renderAnnouncements() {
+  const container = document.querySelector('#dash-announcements');
+  if (!container) return;
+
+  if (ANNOUNCEMENTS.length === 0) {
+    container.innerHTML = '<p class="poll-empty">No announcements yet.</p>';
+    return;
+  }
+
+  const sorted = [...ANNOUNCEMENTS].sort((a, b) => (a.date < b.date ? 1 : -1));
+  container.innerHTML = sorted.slice(0, 5).map(a => `
+    <div class="announcement-item">
+      <div class="announcement-date">${escapeHtml(a.date)}</div>
+      <div class="announcement-title">${escapeHtml(a.title)}</div>
+      <div class="announcement-body">${escapeHtml(a.body)}</div>
+    </div>`).join('');
+}
+
+// ---------- Polls ----------
+// Poll questions live in the "Polls" sheet (edited by hand — see Code.gs).
+// Votes are upserted per (pollId, voterName), so picking a different option
+// just overwrites your existing vote. Tallying happens here from the raw
+// vote rows, same shape as how Prophecies computes hit-rate client-side.
+const POLL_VOTER_KEY = 'dynastyhq_voter_name';
+let _pollsLoaded = false;
+let _allPolls = [];
+let _allPollVotes = [];
+
+function renderPolls() {
+  populatePollVoterPicker();
+  if (!_pollsLoaded) {
+    _pollsLoaded = true;
+    refreshPolls();
+  } else {
+    renderPollCards();
+  }
+}
+
+function populatePollVoterPicker() {
+  const select = document.querySelector('#poll-voter-name');
+  if (!select) return;
+
+  if (select.options.length <= 1) {
+    const names = getAllManagers().map(m => m.display_name).filter(Boolean).sort((a, b) => a.localeCompare(b));
+    select.innerHTML = '<option value="">Voting as...</option>' +
+      names.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
+  }
+
+  const saved = localStorage.getItem(POLL_VOTER_KEY);
+  if (saved) select.value = saved;
+
+  if (!select.dataset.wired) {
+    select.dataset.wired = '1';
+    select.addEventListener('change', () => {
+      localStorage.setItem(POLL_VOTER_KEY, select.value);
+      renderPollCards(); // re-render so "already voted" state matches the new voter
+    });
+  }
+}
+
+async function refreshPolls() {
+  try {
+    const resp = await fetch(`${PROPHECY_CONFIG.APPS_SCRIPT_URL}?action=polls`);
+    const data = await resp.json();
+    if (data.ok) {
+      _allPolls = data.polls;
+      _allPollVotes = data.votes;
+    }
+  } catch (e) {
+    console.warn('Failed to load polls:', e);
+  }
+  renderPollCards();
+}
+
+function tallyPoll(poll) {
+  const votes = _allPollVotes.filter(v => v.pollId === poll.pollId);
+  const counts = {};
+  poll.options.forEach(o => { counts[o] = 0; });
+  votes.forEach(v => { if (counts[v.option] !== undefined) counts[v.option]++; });
+  return { counts, total: votes.length };
+}
+
+function renderPollCards() {
+  const container = document.querySelector('#dash-polls');
+  if (!container) return;
+
+  const active = _allPolls.filter(p => p.active);
+  if (active.length === 0) {
+    container.innerHTML = '<p class="poll-empty">No active polls right now.</p>';
+    return;
+  }
+
+  const voterName = document.querySelector('#poll-voter-name')?.value || '';
+
+  container.innerHTML = active.map(poll => {
+    const { counts, total } = tallyPoll(poll);
+    const myVote = voterName ? _allPollVotes.find(v => v.pollId === poll.pollId && v.voterName === voterName) : null;
+
+    const options = poll.options.map(opt => {
+      const pct = total > 0 ? Math.round((counts[opt] / total) * 100) : 0;
+      const isMine = myVote && myVote.option === opt;
+      return `
+        <button type="button" class="poll-option" data-poll-id="${escapeAttr(poll.pollId)}" data-option="${escapeAttr(opt)}">
+          <span class="poll-option-bar" style="width:${pct}%;"></span>
+          <span class="poll-option-label">
+            <span>${isMine ? '✓ ' : ''}${escapeHtml(opt)}</span>
+            <span>${pct}% (${counts[opt]})</span>
+          </span>
+        </button>`;
+    }).join('');
+
+    return `
+      <div class="poll-card">
+        <div class="poll-question">${escapeHtml(poll.question)}</div>
+        ${options}
+        <div style="font-size:11px;color:var(--muted);margin-top:4px;">${total} vote${total === 1 ? '' : 's'}</div>
+      </div>`;
+  }).join('');
+
+  container.querySelectorAll('.poll-option').forEach(btn => {
+    btn.addEventListener('click', () => handlePollVote(btn.dataset.pollId, btn.dataset.option));
+  });
+}
+
+async function handlePollVote(pollId, option) {
+  const select = document.querySelector('#poll-voter-name');
+  const voterName = select?.value;
+  if (!voterName) {
+    alert('Pick your name from the "Voting as" dropdown first.');
+    return;
+  }
+
+  // Optimistic local update so voting feels instant, then reconcile with the server.
+  _allPollVotes = _allPollVotes.filter(v => !(v.pollId === pollId && v.voterName === voterName));
+  _allPollVotes.push({ pollId, voterName, option, timestamp: new Date().toISOString() });
+  renderPollCards();
+
+  // Same "no explicit Content-Type" CORS trick used by Prophecies submissions.
+  try {
+    await fetch(PROPHECY_CONFIG.APPS_SCRIPT_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'vote', pollId, voterName, option }),
+    });
+  } catch (e) {
+    console.warn('Vote failed to save:', e);
+  }
+  refreshPolls();
+}
+
+// ---------- Changelog ----------
+// Dated entries newest first, then anything from before we started dating
+// them. Edit this array directly to add patch notes.
+const CURRENT_BUILD_VERSION = '2026-09-05.1';
+
+// One consolidated summary entry for everything built before leaguemates
+// ever saw this site, so the first thing they read isn't a pile of
+// internal build-order trivia. Real patch notes start fresh from here —
+// add new dated entries above this one as things actually ship.
+const CHANGELOG = [
+  { date: '2026-09-05', text: 'Dynasty HQ launched: live standings, full league history & all-time records, head-to-head records between any two managers, a trade history log, a rookie draft order calculator, the Prophecies predictions game, and this page — Polls, League News, and quick links to Slack/Sleeper.' },
+];
+
+function renderChangelog() {
+  const container = document.querySelector('#changelog-list');
+  if (!container) return;
+
+  const dated = CHANGELOG.filter(c => c.date !== 'earlier');
+  const earlier = CHANGELOG.filter(c => c.date === 'earlier');
+
+  let html = dated.map(c => `
+    <div class="changelog-item">
+      <div class="announcement-date">${escapeHtml(c.date)}</div>
+      <div class="announcement-body">${escapeHtml(c.text)}</div>
+    </div>`).join('');
+
+  if (earlier.length > 0) {
+    html += '<div class="changelog-group-label">Earlier</div>' + earlier.map(c => `
+      <div class="changelog-item">
+        <div class="announcement-body">${escapeHtml(c.text)}</div>
+      </div>`).join('');
+  }
+
+  container.innerHTML = html;
+}
+
+// One-time "what's new" banner — shown once per build bump, dismissible,
+// links straight into the (nav-less) Changelog tab.
+function initWhatsNewBanner() {
+  const seen = localStorage.getItem('dynastyhq_seen_version');
+  if (seen === CURRENT_BUILD_VERSION) return;
+
+  const banner = document.querySelector('#whats-new-banner');
+  if (!banner) return;
+  banner.style.display = 'flex';
+
+  document.querySelector('#whats-new-view').addEventListener('click', () => {
+    localStorage.setItem('dynastyhq_seen_version', CURRENT_BUILD_VERSION);
+    banner.style.display = 'none';
+    showPage('changelog');
+  });
+  document.querySelector('#whats-new-dismiss').addEventListener('click', () => {
+    localStorage.setItem('dynastyhq_seen_version', CURRENT_BUILD_VERSION);
+    banner.style.display = 'none';
+  });
+}
+
+// ============================================================
 // INIT
 // ============================================================
 async function init() {
@@ -2894,6 +3314,7 @@ async function init() {
 }
 
 init();
+initWhatsNewBanner();
 </script>
 </body>
 </html>
