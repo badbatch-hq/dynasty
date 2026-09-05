@@ -1077,6 +1077,12 @@
       <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);">
         <label class="field-label">Suggest a poll</label>
         <form id="poll-create-form">
+          <div class="poll-voter-row">
+            <label class="field-label" style="margin:0;">Posting as</label>
+            <select id="poll-creator-name" style="width:auto;">
+              <option value="">Posting as...</option>
+            </select>
+          </div>
           <input type="text" id="poll-question" placeholder="Question" required style="width:100%;margin-bottom:8px;">
           <textarea id="poll-options" placeholder="One option per line (at least 2)" required rows="3" style="width:100%;margin-bottom:8px;"></textarea>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
@@ -3141,13 +3147,18 @@ function renderAnnouncements() {
 // Votes are upserted per (pollId, voterName), so picking a different option
 // just overwrites your existing vote. Tallying happens here from the raw
 // vote rows, same shape as how Prophecies computes hit-rate client-side.
+// "Voting as" and "Posting as" are deliberately separate identities — picking
+// a name to vote with doesn't also pick it for suggesting a poll, and vice
+// versa. Each remembers its own last choice.
 const POLL_VOTER_KEY = 'dynastyhq_voter_name';
+const POLL_CREATOR_KEY = 'dynastyhq_creator_name';
 let _pollsLoaded = false;
 let _allPolls = [];
 let _allPollVotes = [];
 
 function renderPolls() {
   populatePollVoterPicker();
+  populatePollCreatorPicker();
   wirePollCreateForm();
   if (!_pollsLoaded) {
     _pollsLoaded = true;
@@ -3157,26 +3168,37 @@ function renderPolls() {
   }
 }
 
-function populatePollVoterPicker() {
-  const select = document.querySelector('#poll-voter-name');
+// Shared by both name pickers below — same dropdown behavior, independent
+// storage key and DOM target.
+function populateNamePicker(selectId, storageKey, placeholder, onChange) {
+  const select = document.querySelector(selectId);
   if (!select) return;
 
   if (select.options.length <= 1) {
     const names = getAllManagers().map(m => m.display_name).filter(Boolean).sort((a, b) => a.localeCompare(b));
-    select.innerHTML = '<option value="">Voting as...</option>' +
+    select.innerHTML = `<option value="">${placeholder}</option>` +
       names.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
   }
 
-  const saved = localStorage.getItem(POLL_VOTER_KEY);
+  const saved = localStorage.getItem(storageKey);
   if (saved) select.value = saved;
 
   if (!select.dataset.wired) {
     select.dataset.wired = '1';
     select.addEventListener('change', () => {
-      localStorage.setItem(POLL_VOTER_KEY, select.value);
-      renderPollCards(); // re-render so "already voted" state matches the new voter
+      localStorage.setItem(storageKey, select.value);
+      if (onChange) onChange();
     });
   }
+}
+
+function populatePollVoterPicker() {
+  // Re-render so "already voted" checkmarks reflect whichever voter is now selected.
+  populateNamePicker('#poll-voter-name', POLL_VOTER_KEY, 'Voting as...', renderPollCards);
+}
+
+function populatePollCreatorPicker() {
+  populateNamePicker('#poll-creator-name', POLL_CREATOR_KEY, 'Posting as...', null);
 }
 
 async function refreshPolls() {
@@ -3300,9 +3322,9 @@ function wirePollCreateForm() {
 
 async function handlePollCreate(e) {
   e.preventDefault();
-  const voterName = document.querySelector('#poll-voter-name')?.value;
-  if (!voterName) {
-    alert('Pick your name from the "Voting as" dropdown first.');
+  const creatorName = document.querySelector('#poll-creator-name')?.value;
+  if (!creatorName) {
+    alert('Pick your name from the "Posting as" dropdown first.');
     return;
   }
 
@@ -3321,7 +3343,7 @@ async function handlePollCreate(e) {
   try {
     const resp = await fetch(PROPHECY_CONFIG.APPS_SCRIPT_URL, {
       method: 'POST',
-      body: JSON.stringify({ action: 'createpoll', question, options, durationDays, createdBy: voterName }),
+      body: JSON.stringify({ action: 'createpoll', question, options, durationDays, createdBy: creatorName }),
     });
     const data = await resp.json();
     if (!data.ok) {
@@ -3330,6 +3352,7 @@ async function handlePollCreate(e) {
     }
     e.target.reset();
     document.querySelector('#poll-duration').value = '7';
+    document.querySelector('#poll-creator-name').value = creatorName; // reset() clears it — keep it sticky like "Voting as"
     refreshPolls();
   } catch (err) {
     console.warn('Poll creation failed:', err);
