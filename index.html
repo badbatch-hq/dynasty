@@ -2014,6 +2014,14 @@ function showPage(name) {
 function renderDashboard() {
   if (!state.league) return;
 
+  // These don't depend on standings/offseason logic at all, so they run
+  // unconditionally, up front — the standings computation below has a
+  // couple of early `return`s (offseason branch, no-data branch) that must
+  // never gate these.
+  renderLinkouts();
+  renderAnnouncements();
+  renderPolls();
+
   document.getElementById('dash-league-title').textContent = state.league.name;
 
   // Detect offseason: no scored weeks yet for the current season
@@ -2140,10 +2148,6 @@ function renderDashboard() {
       <td class="standings-col-streak ${streakClass}" style="font-family:'DM Mono',monospace;font-size:12px;">${streakStr}</td>
     </tr>`;
   }).join('');
-
-  renderLinkouts();
-  renderAnnouncements();
-  renderPolls();
 }
 
 function computeStreaks() {
