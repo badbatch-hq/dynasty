@@ -47,14 +47,25 @@
     position: sticky;
     top: 0;
     z-index: 100;
-    background: rgba(10,12,16,0.92);
-    backdrop-filter: blur(12px);
     border-bottom: 1px solid var(--border);
     padding: 0 32px;
     display: flex;
     align-items: center;
     gap: 32px;
     height: 56px;
+  }
+
+  /* Blur/tint lives on a pseudo-element rather than directly on <header> —
+     backdrop-filter on header itself would make header the containing block
+     for any position:fixed descendant (like the mobile bottom nav), trapping
+     and clipping it inside the header's own box instead of the viewport. */
+  header::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: rgba(10,12,16,0.92);
+    backdrop-filter: blur(12px);
   }
 
   .logo {
@@ -700,7 +711,6 @@
       gap: 8px;
       height: 52px;
       flex-wrap: nowrap;
-      overflow: hidden;
     }
     .logo { font-size: 18px; letter-spacing: 2px; }
     .league-name { display: none; }
