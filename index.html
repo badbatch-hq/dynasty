@@ -665,6 +665,7 @@
     nav button[onclick*="history"]::before   { content: '📋'; }
     nav button[onclick*="h2h"]::before       { content: '⚔️'; }
     nav button[onclick*="trades"]::before    { content: '🤝'; }
+    nav button[onclick*="draftorder"]::before { content: '🎯'; }
 
     /* Main content — add bottom padding for fixed nav */
     main {
@@ -762,6 +763,7 @@
     <button onclick="showPage('history')">History</button>
     <button onclick="showPage('h2h')">H2H</button>
     <button onclick="showPage('trades')">Trades</button>
+    <button onclick="showPage('draftorder')">Draft Order</button>
   </nav>
 </header>
 
@@ -908,6 +910,35 @@
     </div>
   </div>
 
+  <!-- DRAFT ORDER PAGE -->
+  <div class="page" id="page-draftorder">
+    <div class="page-header fade-up">
+      <h1>Draft Order</h1>
+      <p>Rookie draft order, driven by optimal-lineup points instead of manual spreadsheet math</p>
+    </div>
+
+    <div style="display:flex;gap:12px;align-items:center;margin-bottom:20px;" class="fade-up">
+      <select id="draftorder-season" onchange="renderDraftOrder()">
+        <option value="">Select a season</option>
+      </select>
+    </div>
+
+    <div class="card fade-up" style="margin-bottom:24px;font-size:12px;color:var(--muted);line-height:1.7;">
+      <strong style="color:var(--text);">How this is ordered:</strong><br>
+      Picks 1–6 go to the teams that missed the playoffs, worst regular-season optimal lineup total first.<br>
+      Picks 7–8 go to whoever finishes 5th and 6th (the "no money on the line" playoff round), lower optimal total picks first.<br>
+      Picks 9–12 go in reverse order of final playoff finish — champion always picks last.<br>
+      "Optimal" points = the best possible lineup each week from everyone on the roster (bench included), same math as Sleeper's own weekly optimal-score report, totaled across the regular season.
+    </div>
+
+    <div id="draftorder-content">
+      <div class="empty">
+        <div class="empty-icon">🎯</div>
+        <p>Loading draft order data...</p>
+      </div>
+    </div>
+  </div>
+
 </main>
 
 <script>
@@ -916,9 +947,18 @@
 // ============================================================
 const LEAGUE_ID = '1353201498326044672'; // Most recent known league ID (may be 2025 or 2026)
 const KNOWN_LATEST_SEASON = '2026';      // Last season we want to display
-const SEASONS = ['2020','2021','2022','2023','2024','2025','2026'];
+// Verified against Sleeper's own previous_league_id chain: the 2021 league has
+// previous_league_id = null, so the league's history starts at 2021 (there is no 2020 season).
+const SEASONS = ['2021','2022','2023','2024','2025','2026'];
 const CACHE_KEY = 'dynastyhq_v2';        // bumped to bust stale cache
 const CACHE_TTL = 3 * 60 * 60 * 1000;   // 3 hours
+
+// Player ID -> display name lookup, cached separately from league data since it's a
+// large (~5MB), rarely-changing dataset. Sleeper's own docs say not to hit this
+// endpoint more than once a day, so it gets a much longer TTL than the league cache.
+const PLAYERS_CACHE_KEY = 'dynastyhq_players_v2'; // bumped: now stores {name, pos, team} per player, not just a display string
+const PLAYERS_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+let playerInfo = {}; // player_id -> { name, pos, team } — pos feeds the optimal-lineup calc, name/team feed display
 
 const API = 'https://api.sleeper.app/v1';
 
@@ -997,6 +1037,45 @@ function clearCache() {
   location.reload();
 }
 
+function loadPlayerCache() {
+  try {
+    const raw = localStorage.getItem(PLAYERS_CACHE_KEY);
+    if (!raw) return false;
+    const { data, ts } = JSON.parse(raw);
+    if (Date.now() - ts > PLAYERS_CACHE_TTL) return false;
+    playerInfo = data;
+    return true;
+  } catch(e) { return false; }
+}
+
+function savePlayerCache() {
+  try {
+    localStorage.setItem(PLAYERS_CACHE_KEY, JSON.stringify({ data: playerInfo, ts: Date.now() }));
+  } catch(e) { console.warn('Player cache save failed', e); }
+}
+
+// Fetches Sleeper's full NFL player dictionary (~5MB) once, reduces it to a slim
+// id -> {name, pos, team} map (a few hundred KB), and caches that slim map so we don't
+// re-download the whole player DB on every visit. `pos` also feeds the optimal-lineup calc.
+async function loadPlayerData() {
+  if (loadPlayerCache()) return;
+
+  try {
+    const raw = await apiFetch('/players/nfl');
+    const slim = {};
+    for (const [pid, p] of Object.entries(raw || {})) {
+      if (!p) continue;
+      const name = p.full_name || [p.first_name, p.last_name].filter(Boolean).join(' ');
+      if (!name) continue;
+      slim[pid] = { name, pos: p.position || null, team: p.team || null };
+    }
+    playerInfo = slim;
+    savePlayerCache();
+  } catch(e) {
+    console.warn('Failed to load player database — trade cards will show player IDs, draft order will be unavailable:', e);
+  }
+}
+
 // ============================================================
 // DATA LOADING
 // ============================================================
@@ -1050,6 +1129,10 @@ async function loadAllData() {
     };
   });
 
+  // Kick off the player-name DB fetch now — it's a big, independent request, so let it
+  // run in the background while we load season-by-season history below.
+  const playerDataPromise = loadPlayerData();
+
   // Load historical seasons
   const totalSeasons = SEASONS.length;
   for (let i = 0; i < totalSeasons; i++) {
@@ -1066,6 +1149,9 @@ async function loadAllData() {
 
   setLoadStatus('Processing matchup history...', 85);
   buildAllMatchups();
+
+  setLoadStatus('Loading player names...', 90);
+  await playerDataPromise;
 
   setLoadStatus('Processing trade history...', 92);
   buildAllTrades();
@@ -1288,6 +1374,143 @@ function getAllManagers() {
 }
 
 // ============================================================
+// OPTIMAL LINEUP / DRAFT ORDER
+// ============================================================
+
+// Given one roster's players_points for a single week and the league's roster_positions
+// slot list, returns the best possible total score for that week (same math Sleeper uses
+// for its own weekly "optimal score" report). Bench players are eligible — that's the point.
+function computeOptimalLineupScore(playersPoints, rosterPositions) {
+  const startSlots = (rosterPositions || []).filter(p => p !== 'BN' && p !== 'IR' && p !== 'TAXI');
+  const strictSlots = startSlots.filter(p => p !== 'FLEX' && p !== 'SUPER_FLEX');
+  const flexCount = startSlots.filter(p => p === 'FLEX').length;
+  const superFlexCount = startSlots.filter(p => p === 'SUPER_FLEX').length;
+
+  const byPos = {};
+  Object.entries(playersPoints || {}).forEach(([pid, pts]) => {
+    const pos = getPlayerPosition(pid);
+    if (!pos) return;
+    (byPos[pos] = byPos[pos] || []).push({ pid, pts: pts || 0 });
+  });
+  Object.values(byPos).forEach(arr => arr.sort((a, b) => b.pts - a.pts));
+
+  const used = new Set();
+  let total = 0;
+
+  // Fill strict single-position slots first (best player at each spot).
+  const strictCounts = {};
+  strictSlots.forEach(s => { strictCounts[s] = (strictCounts[s] || 0) + 1; });
+  Object.entries(strictCounts).forEach(([pos, count]) => {
+    const pool = byPos[pos] || [];
+    let filled = 0;
+    for (const p of pool) {
+      if (filled >= count) break;
+      if (used.has(p.pid)) continue;
+      used.add(p.pid); total += p.pts; filled++;
+    }
+  });
+
+  // FLEX: best remaining RB/WR/TE.
+  if (flexCount > 0) {
+    const pool = ['RB', 'WR', 'TE']
+      .flatMap(pos => byPos[pos] || [])
+      .filter(p => !used.has(p.pid))
+      .sort((a, b) => b.pts - a.pts);
+    for (let i = 0; i < flexCount && i < pool.length; i++) { used.add(pool[i].pid); total += pool[i].pts; }
+  }
+
+  // SUPER_FLEX (not used in this league today, but handled in case settings ever change).
+  if (superFlexCount > 0) {
+    const pool = ['QB', 'RB', 'WR', 'TE']
+      .flatMap(pos => byPos[pos] || [])
+      .filter(p => !used.has(p.pid))
+      .sort((a, b) => b.pts - a.pts);
+    for (let i = 0; i < superFlexCount && i < pool.length; i++) { used.add(pool[i].pid); total += pool[i].pts; }
+  }
+
+  return total;
+}
+
+// Season-long regular-season optimal-lineup totals per roster_id, plus actual-points
+// totals (used only as a tiebreaker when two teams land on the exact same optimal total).
+function computeOptimalTotals(season) {
+  const sd = state.seasonData[season];
+  if (!sd) return { totals: {}, actualTotals: {} };
+
+  const rosterPositions = sd.league?.roster_positions || state.league?.roster_positions || [];
+  const playoffWeekStart = sd.league?.settings?.playoff_week_start || 15;
+  const totals = {};
+  const actualTotals = {};
+
+  for (const { week, data } of sd.matchups) {
+    if (week >= playoffWeekStart) continue;
+    if (!data || data.length === 0) continue;
+
+    data.forEach(entry => {
+      const rid = entry.roster_id;
+      if (rid == null) return;
+      const optimal = computeOptimalLineupScore(entry.players_points, rosterPositions);
+      totals[rid] = (totals[rid] || 0) + optimal;
+      actualTotals[rid] = (actualTotals[rid] || 0) + (entry.points || 0);
+    });
+  }
+
+  return { totals, actualTotals };
+}
+
+// Builds the draft order for a season under the league's rules:
+//   Picks 1-6:  teams that missed the playoffs, worst optimal total first.
+//   Picks 7-8:  the 5th/6th place finishers (no payout on the line), lower optimal total first.
+//   Picks 9-12: reverse order of final playoff finish — champion always picks last.
+// If the season's playoff bracket isn't decided yet, returns a live in-progress ranking instead.
+function computeDraftOrder(season) {
+  const sd = state.seasonData[season];
+  if (!sd || !sd.rosters || sd.rosters.length === 0) return null;
+
+  const { totals, actualTotals } = computeOptimalTotals(season);
+  const placements = getPlayoffPlacements(season);
+  const hasPlayoffData = Object.keys(placements).length > 0;
+  const allRosterIds = sd.rosters.map(r => r.roster_id);
+
+  const sortByOptimalAsc = (ids) => [...ids].sort((a, b) => {
+    const ta = totals[a] || 0, tb = totals[b] || 0;
+    if (ta !== tb) return ta - tb;
+    return (actualTotals[a] || 0) - (actualTotals[b] || 0); // tie: lower actual points picks first
+  });
+
+  if (!hasPlayoffData) {
+    return {
+      inProgress: true,
+      ranked: sortByOptimalAsc(allRosterIds).map((rid, i) => ({ pick: i + 1, roster_id: rid, optimal: totals[rid] || 0 })),
+    };
+  }
+
+  const order = [];
+  const nonPlayoffIds = allRosterIds.filter(rid => !(rid in placements));
+
+  sortByOptimalAsc(nonPlayoffIds).forEach((rid, i) => {
+    order.push({ pick: i + 1, roster_id: rid, optimal: totals[rid] || 0, reason: 'Missed playoffs' });
+  });
+
+  const fifthSixth = Object.entries(placements)
+    .filter(([, place]) => place === 5 || place === 6)
+    .map(([rid]) => Number(rid));
+  sortByOptimalAsc(fifthSixth).forEach((rid, i) => {
+    order.push({ pick: 7 + i, roster_id: rid, optimal: totals[rid] || 0, reason: `Finished ${placements[rid]}th` });
+  });
+
+  const placeLabel = { 1: 'Champion', 2: 'Runner-up', 3: '3rd place', 4: '4th place' };
+  [4, 3, 2, 1].forEach((place, i) => {
+    const entry = Object.entries(placements).find(([, p]) => p === place);
+    if (!entry) return;
+    const rid = Number(entry[0]);
+    order.push({ pick: 9 + i, roster_id: rid, optimal: totals[rid] || 0, reason: placeLabel[place] });
+  });
+
+  return { inProgress: false, order };
+}
+
+// ============================================================
 // NAVIGATION
 // ============================================================
 function showPage(name) {
@@ -1301,6 +1524,7 @@ function showPage(name) {
   if (name === 'history') renderHistory();
   if (name === 'h2h') renderH2HPage();
   if (name === 'trades') renderTradesPage();
+  if (name === 'draftorder') renderDraftOrderPage();
 }
 
 // ============================================================
@@ -1336,7 +1560,7 @@ function renderDashboard() {
       `${currentSeason} Season · Offseason · Final 2025 standings shown`;
   } else {
     document.getElementById('dash-season-info').textContent =
-      `${currentSeason} Season · Week ${lastWeek} · ${state.league.settings?.playoff_week_start || 14}-week regular season`;
+      `${currentSeason} Season · Week ${lastWeek} · ${(state.league.settings?.playoff_week_start || 15) - 1}-week regular season`;
   }
 
   // Update card title to reflect what we're showing
@@ -1849,7 +2073,7 @@ function renderTradeCard(trade) {
   function assetsFor(rid) {
     const players = Object.entries(trade.adds || {})
       .filter(([pid, toRid]) => toRid === rid)
-      .map(([pid]) => getPlayerName(pid, trade));
+      .map(([pid]) => getPlayerName(pid));
 
     const picks = (trade.draft_picks || [])
       .filter(p => p.owner_id === rid)
@@ -1887,15 +2111,95 @@ function renderTradeCard(trade) {
   </div>`;
 }
 
-// Player name lookup — we don't have a full player DB loaded so use IDs
-// We'll display nicely if we have player data, otherwise show the ID
-const playerCache = {};
+// ============================================================
+// DRAFT ORDER PAGE
+// ============================================================
+function renderDraftOrderPage() {
+  const sel = document.getElementById('draftorder-season');
+  if (sel.options.length <= 1) {
+    [...SEASONS].reverse().forEach(s => {
+      if (state.seasonData[s]) {
+        const opt = document.createElement('option');
+        opt.value = s; opt.textContent = s + ' Season';
+        sel.appendChild(opt);
+      }
+    });
+    if (sel.options.length > 1) sel.selectedIndex = 1; // default to the most recent season with data
+  }
+  renderDraftOrder();
+}
 
-function getPlayerName(playerId, trade) {
-  if (playerCache[playerId]) return playerCache[playerId];
-  // Player names would need the /players/nfl endpoint (large file, ~5MB)
-  // We show the ID for now and can enhance later
-  return `Player #${playerId}`;
+function renderDraftOrder() {
+  const season = document.getElementById('draftorder-season').value;
+  const container = document.getElementById('draftorder-content');
+
+  if (!season) {
+    container.innerHTML = `<div class="empty"><div class="empty-icon">🎯</div><p>Select a season to view its draft order</p></div>`;
+    return;
+  }
+
+  const result = computeDraftOrder(season);
+  if (!result) {
+    container.innerHTML = `<div class="empty"><div class="empty-icon">🎯</div><p>No data loaded for ${season} yet</p></div>`;
+    return;
+  }
+
+  if (result.inProgress) {
+    const rows = result.ranked.map((r, i) => {
+      const m = getManager(r.roster_id, season);
+      return `<tr>
+        <td class="rank-num ${i < 6 ? 'top3' : ''}">${i + 1}</td>
+        <td>${avatarEl(m.avatar, m.display_name)}<span class="team-name">${m.team_name}</span></td>
+        <td style="font-family:'DM Mono',monospace;font-size:12px;">${r.optimal.toFixed(2)}</td>
+      </tr>`;
+    }).join('');
+
+    container.innerHTML = `
+      <div class="card fade-up">
+        <div class="card-title">Live Draft Order Watch — ${season}</div>
+        <p style="color:var(--muted);font-size:12px;margin-bottom:16px;">Season in progress — ranked by regular-season optimal-lineup points so far (lowest = would currently pick 1st). Final order locks in once the playoffs conclude.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>#</th><th>Team</th><th>Optimal Pts (Season)</th></tr></thead>
+            <tbody>${rows || '<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:24px;">No scored weeks yet</td></tr>'}</tbody>
+          </table>
+        </div>
+      </div>`;
+    return;
+  }
+
+  const rows = result.order.map(r => {
+    const m = getManager(r.roster_id, season);
+    return `<tr>
+      <td class="rank-num ${r.pick <= 6 ? 'top3' : ''}">${r.pick}</td>
+      <td>${avatarEl(m.avatar, m.display_name)}<span class="team-name">${m.team_name}</span></td>
+      <td style="color:var(--muted);font-size:12px;">${r.reason}</td>
+      <td style="font-family:'DM Mono',monospace;font-size:12px;">${r.optimal.toFixed(2)}</td>
+    </tr>`;
+  }).join('');
+
+  container.innerHTML = `
+    <div class="card fade-up">
+      <div class="card-title">${season} Rookie Draft Order</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Pick</th><th>Team</th><th>Why</th><th>Optimal Pts</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+// Player name/position lookup, backed by the playerInfo map built in loadPlayerData().
+function getPlayerName(playerId) {
+  const p = playerInfo[playerId];
+  if (!p) return `Player #${playerId}`;
+  const teamTag = p.team ? ` - ${p.team}` : '';
+  return p.pos ? `${p.name} (${p.pos}${teamTag})` : p.name;
+}
+
+function getPlayerPosition(playerId) {
+  return (playerInfo[playerId] && playerInfo[playerId].pos) || null;
 }
 
 // ============================================================
@@ -1905,6 +2209,9 @@ async function init() {
   const fromCache = loadCache();
 
   if (fromCache) {
+    // League data came from cache, but player names are cached separately (longer TTL) —
+    // make sure they're loaded too before we render anything that shows player names.
+    await loadPlayerData();
     document.getElementById('header-league-name').textContent = state.league?.name || '';
     setLoadStatus('Loaded from cache', 100);
     setTimeout(() => {
