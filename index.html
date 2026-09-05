@@ -625,6 +625,27 @@
     border-color: var(--accent);
   }
 
+  .poll-option:disabled {
+    cursor: default;
+    opacity: 0.7;
+  }
+
+  .poll-option:disabled:hover {
+    border-color: var(--border);
+  }
+
+  .poll-closed-tag {
+    font-size: 10px;
+    font-weight: 400;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 6px;
+    margin-left: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
   .poll-option-bar {
     position: absolute;
     left: 0;
@@ -998,7 +1019,7 @@
     </div>
 
     <!-- Summary stats -->
-    <div class="grid-4 stagger" id="dash-stats" style="margin-bottom:24px;">
+    <div class="grid-3 stagger" id="dash-stats" style="margin-bottom:24px;">
       <div class="stat-pill">
         <span class="label">Season</span>
         <span class="value gold" id="stat-season">—</span>
@@ -1006,10 +1027,6 @@
       <div class="stat-pill">
         <span class="label">Week</span>
         <span class="value" id="stat-week">—</span>
-      </div>
-      <div class="stat-pill">
-        <span class="label">Teams</span>
-        <span class="value blue" id="stat-teams">—</span>
       </div>
       <div class="stat-pill">
         <span class="label">Years Running</span>
@@ -1055,6 +1072,24 @@
       </div>
       <div id="dash-polls">
         <p class="poll-empty">Loading polls...</p>
+      </div>
+
+      <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);">
+        <label class="field-label">Suggest a poll</label>
+        <form id="poll-create-form">
+          <input type="text" id="poll-question" placeholder="Question" required style="width:100%;margin-bottom:8px;">
+          <textarea id="poll-options" placeholder="One option per line (at least 2)" required rows="3" style="width:100%;margin-bottom:8px;"></textarea>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <select id="poll-duration" style="width:auto;">
+              <option value="">Never closes</option>
+              <option value="1">Closes in 1 day</option>
+              <option value="3">Closes in 3 days</option>
+              <option value="7" selected>Closes in 1 week</option>
+              <option value="14">Closes in 2 weeks</option>
+            </select>
+            <button type="submit" class="btn">Post Poll</button>
+          </div>
+        </form>
       </div>
     </div>
 
@@ -1441,7 +1476,11 @@ async function apiFetch(url) {
 // ============================================================
 function saveCache() {
   try {
-    const payload = { data: state, ts: Date.now() };
+    // seasonLeagueIds is a separate module-level map (not part of `state`) built
+    // by walking the league chain in loadAllData() — it has to be cached
+    // alongside state, or every cached load starts it empty and "Years Running"
+    // shows 0 (only a fresh, non-cached load ever repopulates it otherwise).
+    const payload = { data: state, seasonLeagueIds, ts: Date.now() };
     localStorage.setItem(CACHE_KEY, JSON.stringify(payload));
   } catch(e) { console.warn('Cache save failed', e); }
 }
@@ -1450,9 +1489,10 @@ function loadCache() {
   try {
     const raw = localStorage.getItem(CACHE_KEY);
     if (!raw) return false;
-    const { data, ts } = JSON.parse(raw);
+    const { data, seasonLeagueIds: cachedSeasonLeagueIds, ts } = JSON.parse(raw);
     if (Date.now() - ts > CACHE_TTL) return false;
     Object.assign(state, data);
+    if (cachedSeasonLeagueIds) Object.assign(seasonLeagueIds, cachedSeasonLeagueIds);
     state.loadedAt = ts;
     return true;
   } catch(e) { return false; }
@@ -1993,7 +2033,6 @@ function renderDashboard() {
 
   document.getElementById('stat-season').textContent = currentSeason;
   document.getElementById('stat-week').textContent = isOffseason ? 'Off' : lastWeek;
-  document.getElementById('stat-teams').textContent = state.league.total_rosters || state.rosters.length || '—';
   document.getElementById('stat-years').textContent = SEASONS.filter(s => seasonLeagueIds[s]).length;
 
   if (isOffseason) {
@@ -3105,6 +3144,7 @@ let _allPollVotes = [];
 
 function renderPolls() {
   populatePollVoterPicker();
+  wirePollCreateForm();
   if (!_pollsLoaded) {
     _pollsLoaded = true;
     refreshPolls();
@@ -3157,19 +3197,29 @@ function tallyPoll(poll) {
   return { counts, total: votes.length };
 }
 
+// A poll counts as closed either because Joe flipped `active` to FALSE by
+// hand in the sheet, or because its optional `closesAt` deadline has passed
+// — the latter takes effect immediately here even before the optional
+// autoClosePolls() cleanup trigger (see Code.gs) gets around to flipping the
+// sheet's `active` column to match.
+function isPollClosed(poll) {
+  return !poll.active || (poll.closesAt && new Date(poll.closesAt).getTime() < Date.now());
+}
+
 function renderPollCards() {
   const container = document.querySelector('#dash-polls');
   if (!container) return;
 
-  const active = _allPolls.filter(p => p.active);
-  if (active.length === 0) {
+  const shown = _allPolls.filter(p => p.active);
+  if (shown.length === 0) {
     container.innerHTML = '<p class="poll-empty">No active polls right now.</p>';
     return;
   }
 
   const voterName = document.querySelector('#poll-voter-name')?.value || '';
 
-  container.innerHTML = active.map(poll => {
+  container.innerHTML = shown.map(poll => {
+    const closed = isPollClosed(poll);
     const { counts, total } = tallyPoll(poll);
     const myVote = voterName ? _allPollVotes.find(v => v.pollId === poll.pollId && v.voterName === voterName) : null;
 
@@ -3177,7 +3227,7 @@ function renderPollCards() {
       const pct = total > 0 ? Math.round((counts[opt] / total) * 100) : 0;
       const isMine = myVote && myVote.option === opt;
       return `
-        <button type="button" class="poll-option" data-poll-id="${escapeAttr(poll.pollId)}" data-option="${escapeAttr(opt)}">
+        <button type="button" class="poll-option" data-poll-id="${escapeAttr(poll.pollId)}" data-option="${escapeAttr(opt)}" ${closed ? 'disabled' : ''}>
           <span class="poll-option-bar" style="width:${pct}%;"></span>
           <span class="poll-option-label">
             <span>${isMine ? '✓ ' : ''}${escapeHtml(opt)}</span>
@@ -3188,7 +3238,7 @@ function renderPollCards() {
 
     return `
       <div class="poll-card">
-        <div class="poll-question">${escapeHtml(poll.question)}</div>
+        <div class="poll-question">${escapeHtml(poll.question)}${closed ? ' <span class="poll-closed-tag">Closed</span>' : ''}</div>
         ${options}
         <div style="font-size:11px;color:var(--muted);margin-top:4px;">${total} vote${total === 1 ? '' : 's'}</div>
       </div>`;
@@ -3207,21 +3257,82 @@ async function handlePollVote(pollId, option) {
     return;
   }
 
-  // Optimistic local update so voting feels instant, then reconcile with the server.
+  // Optimistic local update so voting feels instant, then reconcile with the
+  // server — which is the real gatekeeper on closed polls, in case this
+  // browser's copy of _allPolls is stale.
+  const previousVotes = _allPollVotes;
   _allPollVotes = _allPollVotes.filter(v => !(v.pollId === pollId && v.voterName === voterName));
   _allPollVotes.push({ pollId, voterName, option, timestamp: new Date().toISOString() });
   renderPollCards();
 
   // Same "no explicit Content-Type" CORS trick used by Prophecies submissions.
   try {
-    await fetch(PROPHECY_CONFIG.APPS_SCRIPT_URL, {
+    const resp = await fetch(PROPHECY_CONFIG.APPS_SCRIPT_URL, {
       method: 'POST',
       body: JSON.stringify({ action: 'vote', pollId, voterName, option }),
     });
+    const data = await resp.json();
+    if (!data.ok) {
+      _allPollVotes = previousVotes;
+      alert(data.error || 'Vote failed to save.');
+      renderPollCards();
+      return;
+    }
   } catch (e) {
     console.warn('Vote failed to save:', e);
   }
   refreshPolls();
+}
+
+// Anyone can post a poll — same open-submission spirit as Prophecies, no
+// admin key or approval step. `durationDays` is optional; leave it blank
+// (the "Never closes" option) for a poll with no deadline.
+function wirePollCreateForm() {
+  const form = document.querySelector('#poll-create-form');
+  if (!form || form.dataset.wired) return;
+  form.dataset.wired = '1';
+  form.addEventListener('submit', handlePollCreate);
+}
+
+async function handlePollCreate(e) {
+  e.preventDefault();
+  const voterName = document.querySelector('#poll-voter-name')?.value;
+  if (!voterName) {
+    alert('Pick your name from the "Voting as" dropdown first.');
+    return;
+  }
+
+  const question = document.querySelector('#poll-question').value.trim();
+  const options = document.querySelector('#poll-options').value
+    .split('\n').map(o => o.trim()).filter(Boolean);
+  const durationDays = document.querySelector('#poll-duration').value;
+
+  if (!question || options.length < 2) {
+    alert('Enter a question and at least 2 options (one per line).');
+    return;
+  }
+
+  const submitBtn = e.target.querySelector('button[type="submit"]');
+  submitBtn.disabled = true;
+  try {
+    const resp = await fetch(PROPHECY_CONFIG.APPS_SCRIPT_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'createpoll', question, options, durationDays, createdBy: voterName }),
+    });
+    const data = await resp.json();
+    if (!data.ok) {
+      alert(data.error || 'Failed to post poll.');
+      return;
+    }
+    e.target.reset();
+    document.querySelector('#poll-duration').value = '7';
+    refreshPolls();
+  } catch (err) {
+    console.warn('Poll creation failed:', err);
+    alert('Failed to post poll — try again.');
+  } finally {
+    submitBtn.disabled = false;
+  }
 }
 
 // ---------- Changelog ----------

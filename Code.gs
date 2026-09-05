@@ -44,9 +44,10 @@ const HEADERS = [
   'checkType', 'checkParams', 'predictionText', 'status', 'resolvedDate', 'resolvedNote',
 ];
 
-// Poll QUESTIONS are added by hand directly in the "Polls" sheet (same manual
-// workflow as resolving freeform Prophecies) — there's no create-poll endpoint.
-const POLL_HEADERS = ['pollId', 'question', 'options', 'active', 'createdAt'];
+// Anyone can post a poll through the /createpoll endpoint below (same
+// open-submission spirit as Prophecies) — no admin key, no approval step.
+// closesAt is optional: blank means the poll never auto-closes.
+const POLL_HEADERS = ['pollId', 'question', 'options', 'active', 'createdAt', 'closesAt', 'createdBy'];
 const POLL_VOTE_HEADERS = ['pollId', 'voterName', 'option', 'timestamp'];
 
 // ---------- HTTP entry points ----------
@@ -87,6 +88,10 @@ function doPost(e) {
 
   if (action === 'vote') {
     return jsonResponse(submitPollVote(body));
+  }
+
+  if (action === 'createpoll') {
+    return jsonResponse(submitPoll(body));
   }
 
   return jsonResponse({ ok: false, error: 'Unknown action. Resolve freeform predictions directly in the sheet (status column).' }, 400);
@@ -209,9 +214,9 @@ function getPollVotesSheet() {
 }
 
 // Polls sheet columns: pollId, question, options (comma-separated), active
-// (TRUE/FALSE), createdAt. Add/edit rows by hand in the sheet to run a poll —
-// there's no create-poll endpoint, same spirit as resolving freeform
-// Prophecies directly in the sheet.
+// (TRUE/FALSE), createdAt, closesAt (optional ISO timestamp), createdBy.
+// Rows normally come in through submitPoll() below, but hand-editing a row
+// (e.g. to flip `active` to FALSE, or edit a typo) works fine too.
 function getAllPolls() {
   const sheet = getPollsSheet();
   const lastRow = sheet.getLastRow();
@@ -223,9 +228,45 @@ function getAllPolls() {
       POLL_HEADERS.forEach((h, i) => { obj[h] = row[i]; });
       obj.options = String(obj.options || '').split(',').map(o => o.trim()).filter(Boolean);
       obj.active = obj.active === true || String(obj.active).toLowerCase() === 'true';
+      obj.closesAt = obj.closesAt ? new Date(obj.closesAt).toISOString() : '';
       return obj;
     })
     .filter(p => p.pollId);
+}
+
+// Open to anyone — no admin key, mirroring how Prophecies submissions work.
+// options: array of option strings (need at least 2). durationDays: number
+// of days until the poll auto-closes, or '' / omitted for no deadline.
+function submitPoll(body) {
+  const required = ['question', 'options'];
+  for (const field of required) {
+    if (!body[field]) return { ok: false, error: `Missing field: ${field}` };
+  }
+
+  const options = (Array.isArray(body.options) ? body.options : String(body.options).split(','))
+    .map(o => String(o).trim()).filter(Boolean);
+  if (options.length < 2) return { ok: false, error: 'Need at least 2 options' };
+
+  const sheet = getPollsSheet();
+  const id = Utilities.getUuid();
+  const now = new Date();
+
+  let closesAt = '';
+  const days = Number(body.durationDays);
+  if (days > 0) {
+    closesAt = new Date(now.getTime() + days * 24 * 60 * 60 * 1000).toISOString();
+  }
+
+  sheet.appendRow([
+    id,
+    body.question,
+    options.join(','),
+    true, // active
+    now.toISOString(),
+    closesAt,
+    body.createdBy || '',
+  ]);
+  return { ok: true, id };
 }
 
 function getAllPollVotes() {
@@ -258,6 +299,17 @@ function submitPollVote(body) {
     if (!body[field]) return { ok: false, error: `Missing field: ${field}` };
   }
 
+  // Real gatekeeper on closed polls — a browser with a stale poll list could
+  // otherwise still fire off a vote after the deadline (or after Joe flips
+  // `active` off by hand), so re-check against the sheet here rather than
+  // trusting whatever the client last saw.
+  const poll = getAllPolls().find(p => p.pollId === body.pollId);
+  if (!poll) return { ok: false, error: 'Poll not found' };
+  if (!poll.active) return { ok: false, error: 'This poll is closed' };
+  if (poll.closesAt && new Date(poll.closesAt).getTime() < Date.now()) {
+    return { ok: false, error: 'This poll is closed' };
+  }
+
   const sheet = getPollVotesSheet();
   const rowIndex = findPollVoteRowIndex(sheet, body.pollId, body.voterName);
   const row = [body.pollId, body.voterName, body.option, new Date().toISOString()];
@@ -268,6 +320,29 @@ function submitPollVote(body) {
     sheet.getRange(rowIndex, 1, 1, POLL_VOTE_HEADERS.length).setValues([row]);
   }
   return { ok: true };
+}
+
+// Optional housekeeping: flips `active` to FALSE in the sheet for any poll
+// whose closesAt deadline has passed. Not required for correctness —
+// submitPollVote already rejects votes on expired polls regardless of this
+// column — but keeps the sheet itself honest at a glance instead of showing
+// TRUE forever. Wire it up the same way as the Prophecies auto-validation:
+// Triggers > Add trigger > autoClosePolls > time-driven (hourly works well).
+function autoClosePolls() {
+  const sheet = getPollsSheet();
+  const polls = getAllPolls();
+  const activeCol = POLL_HEADERS.indexOf('active') + 1;
+  const now = Date.now();
+  let closed = 0;
+
+  polls.forEach((p, i) => {
+    if (p.active && p.closesAt && new Date(p.closesAt).getTime() < now) {
+      sheet.getRange(i + 2, activeCol).setValue(false);
+      closed++;
+    }
+  });
+
+  return { closed };
 }
 
 // ---------- One-time legacy import ----------
