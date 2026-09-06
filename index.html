@@ -621,6 +621,18 @@
     margin-bottom: 24px;
   }
 
+  /* Grudge Match Tracker cards (H2H page) — a fixed 2x2 layout (two
+     stacks of two) rather than the reflowing auto-fit grid above, since
+     there are always exactly up to 4 of these and none of them is meant
+     to stand out as a hero banner the way Robber Baron does on Trades.
+     Stays 2-up even on narrow screens, matching .grid-2's convention. */
+  .grudge-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+
   /* The normal case is exactly 5 title cards: 3 volume-based ones (Day
      Trader/Diamond Hands/Frequent Flyer) then 2 grading-based ones (Fleece
      of the Year/Buyer's Remorse) — see renderRobberBaron's push order. Lay
@@ -1347,6 +1359,8 @@
       <p>All-time matchup records between any two managers</p>
     </div>
 
+    <div id="grudge-section"></div>
+
     <div class="h2h-selector fade-up">
       <select id="h2h-team1" onchange="renderH2H()">
         <option value="">Select Team 1</option>
@@ -1617,7 +1631,7 @@ const KNOWN_LATEST_SEASON = '2026';      // Last season we want to display
 // Verified against Sleeper's own previous_league_id chain: the 2021 league has
 // previous_league_id = null, so the league's history starts at 2021 (there is no 2020 season).
 const SEASONS = ['2021','2022','2023','2024','2025','2026'];
-const CACHE_KEY = 'dynastyhq_v2';        // bumped to bust stale cache
+const CACHE_KEY = 'dynastyhq_v3';        // bumped again: state grew allMatchupsAll (see buildAllMatchups)
 const CACHE_TTL = 3 * 60 * 60 * 1000;   // 3 hours
 
 // Player ID -> display name lookup, cached separately from league data since it's a
@@ -1919,18 +1933,34 @@ async function loadSeasonData(season) {
 // (findSeasonLeagueId removed — season->leagueId map is built upfront in loadAllData)
 
 function buildAllMatchups() {
+  // Two parallel lists, built from the same raw data:
+  //   state.allMatchups    — regular season only. This is what standings,
+  //                          win/loss streaks, All-Time Records, and the
+  //                          trade-grading regular-season lock all read —
+  //                          none of those should suddenly start counting
+  //                          playoff games, so this keeps its original
+  //                          filter and its original meaning unchanged.
+  //   state.allMatchupsAll — every real game ever played, regular season
+  //                          AND playoffs (postseason bracket games and
+  //                          consolation/"toilet bowl" games alike — this
+  //                          list doesn't try to tell those apart; use
+  //                          matchupIsPlayoffGame() for that). This is
+  //                          what the H2H page and the Grudge Match
+  //                          Tracker read, since "every time these two
+  //                          teams ever played" should include the
+  //                          playoffs — a rivalry doesn't stop counting
+  //                          once the postseason starts.
   state.allMatchups = [];
+  state.allMatchupsAll = [];
 
   for (const season of SEASONS) {
     const sd = state.seasonData[season];
     if (!sd) continue;
 
-    // Only include regular season weeks in allMatchups (used for W/L records and streaks)
     const playoffWeekStart = sd.league?.settings?.playoff_week_start || 15;
 
     for (const { week, data } of sd.matchups) {
       if (!data || data.length === 0) continue;
-      if (week >= playoffWeekStart) continue; // skip playoff weeks
 
       // Group by matchup_id
       const byMatchup = {};
@@ -1952,7 +1982,7 @@ function buildAllMatchups() {
         // (H2H, win streaks, all-time records). A real 0-0 tie between two
         // set lineups is effectively impossible, so this is a safe filter.
         if (pts1 === 0 && pts2 === 0) continue;
-        state.allMatchups.push({
+        const game = {
           season,
           week,
           matchup_id: mid,
@@ -1960,7 +1990,9 @@ function buildAllMatchups() {
           roster2: b.roster_id,
           pts1,
           pts2,
-        });
+        };
+        state.allMatchupsAll.push(game);
+        if (week < playoffWeekStart) state.allMatchups.push(game);
       }
     }
   }
@@ -2964,6 +2996,8 @@ function renderH2HPage() {
 
   if (current1) sel1.value = current1;
   if (current2) sel2.value = current2;
+
+  renderGrudgeMatches();
 }
 
 function renderH2H() {
@@ -2982,8 +3016,12 @@ function renderH2H() {
   const m1 = getManager(rid1);
   const m2 = getManager(rid2);
 
-  // Find all matchups between these two
-  const matchups = state.allMatchups.filter(m =>
+  // Find all matchups between these two — allMatchupsAll (not allMatchups)
+  // so this includes every playoff meeting too, not just the regular
+  // season. allMatchups stays regular-season-only for the site's actual
+  // standings/streak calculations elsewhere; a head-to-head history is a
+  // different thing and should include every game these two ever played.
+  const matchups = state.allMatchupsAll.filter(m =>
     (m.roster1 === rid1 && m.roster2 === rid2) ||
     (m.roster1 === rid2 && m.roster2 === rid1)
   ).sort((a, b) => {
@@ -3003,13 +3041,19 @@ function renderH2H() {
 
   const winner = wins1 > wins2 ? 1 : wins2 > wins1 ? 2 : 0;
 
+  // Flags which of these games were real playoff-bracket meetings (not
+  // just games played during a playoff week — see matchupIsPlayoffGame),
+  // so a 🏆 can be dropped next to those rows below.
+  const { bySeasonPair } = buildPlayoffMeetings();
+
   const matchupRows = matchups.map(m => {
     const isRid1First = m.roster1 === rid1;
     const p1 = isRid1First ? m.pts1 : m.pts2;
     const p2 = isRid1First ? m.pts2 : m.pts1;
     const w1 = p1 > p2;
+    const playoffTag = matchupIsPlayoffGame(m, bySeasonPair) ? ' 🏆' : '';
     return `<div class="matchup-row">
-      <span style="font-size:11px;font-family:'DM Mono',monospace;color:var(--muted);">${m.season} W${m.week}</span>
+      <span style="font-size:11px;font-family:'DM Mono',monospace;color:var(--muted);">${m.season} W${m.week}${playoffTag}</span>
       <span class="team-name" style="text-align:right;${w1?'color:var(--success)':''}">${m1.team_name}</span>
       <span class="matchup-score">${p1.toFixed(2)} — ${p2.toFixed(2)}</span>
       <span class="team-name" style="${!w1?'color:var(--success)':''}">${m2.team_name}</span>
@@ -3048,6 +3092,208 @@ function renderH2H() {
         <div class="empty-icon">🏈</div>
         <p>No matchup history found between these teams</p>
       </div>`}`;
+}
+
+// ============================================================
+// GRUDGE MATCH TRACKER (auto-surfaced rivalries on the H2H page)
+// ============================================================
+
+// Minimum games before a rivalry can be crowned "most lopsided" or
+// "closest" — without this, a single 1-0 all-time meeting would read as
+// either a 100% sweep or a coin-flip depending on how you frame it, and
+// neither says anything real about a rivalry. Same idea as the trade
+// pages' TRADE_TITLE_MIN_TRADES. The most-played title has no minimum —
+// any pair that's ever met at all is eligible for that one.
+const GRUDGE_MIN_GAMES = 3;
+
+// Counts playoff-bracket meetings between every pair of rosters, from
+// each season's winners_bracket (state.seasonData[season].winnersbracket —
+// the top-seed bracket only; Sleeper keeps non-playoff consolation/"toilet
+// bowl" games in a separate losers_bracket this site never fetches, so a
+// count here always means a real playoff game). A bracket game's `w`/`l`
+// fields carry the two participating roster ids directly once it's been
+// played — no need to also cross-reference which week it happened in.
+// Returns both a totals-by-pair map (for the rivalry cards) and a
+// per-season-per-pair map (so a single specific game, like the Statement
+// Game below, can be checked for whether IT was the playoff meeting).
+function buildPlayoffMeetings() {
+  const totalByPair = {};
+  const bySeasonPair = new Set();
+  Object.entries(state.seasonData).forEach(([season, sd]) => {
+    (sd.winnersbracket || []).forEach(game => {
+      if (game.w == null || game.l == null) return; // not yet played
+      const ridA = Math.min(game.w, game.l);
+      const ridB = Math.max(game.w, game.l);
+      const key = `${ridA}-${ridB}`;
+      totalByPair[key] = (totalByPair[key] || 0) + 1;
+      bySeasonPair.add(`${season}|${key}`);
+    });
+  });
+  return { totalByPair, bySeasonPair };
+}
+
+// One record per unique pair of teams that have ever played each other,
+// built from the exact same complete matchup data the manual H2H selector
+// above uses (state.allMatchupsAll — regular season AND playoffs) — so
+// these numbers always agree with what you see when you pick that pair by
+// hand. Ties (a real tie score) are resolved the same way renderH2H does
+// (p1>p2 wins, else the other side does) so totals always match between
+// the two views.
+function buildAllRivalries() {
+  const pairs = {};
+  state.allMatchupsAll.forEach(m => {
+    const ridA = Math.min(m.roster1, m.roster2);
+    const ridB = Math.max(m.roster1, m.roster2);
+    const key = `${ridA}-${ridB}`;
+    if (!pairs[key]) pairs[key] = { ridA, ridB, games: 0, winsA: 0, winsB: 0 };
+    const p = pairs[key];
+    const aIsFirst = m.roster1 === ridA;
+    const ptsA = aIsFirst ? m.pts1 : m.pts2;
+    const ptsB = aIsFirst ? m.pts2 : m.pts1;
+    p.games++;
+    if (ptsA > ptsB) p.winsA++;
+    else p.winsB++;
+  });
+
+  const { totalByPair } = buildPlayoffMeetings();
+  Object.values(pairs).forEach(p => {
+    p.playoffMeetings = totalByPair[`${p.ridA}-${p.ridB}`] || 0;
+  });
+
+  return Object.values(pairs);
+}
+
+// True when a specific state.allMatchups entry was itself a real
+// playoff-bracket game — not just "played during a playoff week." This
+// league runs consolation ("toilet bowl") games in those same weeks for
+// non-playoff teams, and those should never get tagged as playoff games.
+// Checks both that the week falls at/after that season's real playoff
+// start (lastRegularSeasonWeek, defined above near the Trade Analyzer) AND
+// that this exact pair has a recorded winners-bracket meeting that season.
+// Shared by the Statement Game card and the "All Matchups" list below so
+// the two always agree on what counts as a playoff game.
+function matchupIsPlayoffGame(m, bySeasonPair) {
+  if (m.week <= lastRegularSeasonWeek(m.season)) return false;
+  const ridA = Math.min(m.roster1, m.roster2);
+  const ridB = Math.max(m.roster1, m.roster2);
+  return bySeasonPair.has(`${m.season}|${ridA}-${ridB}`);
+}
+
+// The single biggest-margin game in league history, across every season —
+// including playoff blowouts — for the Statement Game card.
+function findStatementGame(bySeasonPair) {
+  let best = null;
+  state.allMatchupsAll.forEach(m => {
+    const margin = Math.abs(m.pts1 - m.pts2);
+    if (!best || margin > best.margin) best = { ...m, margin };
+  });
+  if (!best) return null;
+  best.isPlayoffGame = matchupIsPlayoffGame(best, bySeasonPair);
+  return best;
+}
+
+function renderGrudgeMatches() {
+  const section = document.getElementById('grudge-section');
+  if (!section) return;
+
+  const rivalries = buildAllRivalries();
+  if (rivalries.length === 0) { section.innerHTML = ''; return; }
+
+  function recordLine(mA, mB, winsA, winsB) {
+    if (winsA === winsB) return `Series tied ${winsA}-${winsB}`;
+    const leader = winsA > winsB ? mA : mB;
+    return `${leader.team_name} leads ${Math.max(winsA, winsB)}-${Math.min(winsA, winsB)}`;
+  }
+
+  // Appended to a rivalry card's subtitle whenever that pair has playoff
+  // history — a 3-2 regular-season rivalry hits different once you know
+  // two of those games were elimination games. Uses the same "·" separator
+  // as the rest of the card's facts, not a dash, so it reads as one more
+  // item in the list rather than an aside.
+  function playoffNote(r) {
+    if (!r.playoffMeetings) return '';
+    return ` · met in the playoffs ${r.playoffMeetings} time${r.playoffMeetings === 1 ? '' : 's'}`;
+  }
+
+  // All four cards render at the same compact size now — with four of
+  // them, nothing needed to be the oversized hero the way the single
+  // Robber Baron banner is on the Trades page.
+  function card(icon, title, sub, danger) {
+    return `
+      <div class="robber-baron-banner banner-compact fade-up${danger ? ' banner-danger' : ''}">
+        <div class="robber-baron-icon">${icon}</div>
+        <div>
+          <div class="robber-baron-title">${title}</div>
+          <div class="robber-baron-sub">${sub}</div>
+        </div>
+      </div>`;
+  }
+
+  const cards = [];
+
+  // --- Rivalry Central: the most-played matchup in league history.
+  const mostPlayed = rivalries.slice().sort((a, b) => b.games - a.games)[0];
+  if (mostPlayed) {
+    const mA = getManager(mostPlayed.ridA);
+    const mB = getManager(mostPlayed.ridB);
+    cards.push(card('⚔️', `Rivalry Central — ${mA.team_name} vs ${mB.team_name}`,
+      `Played ${mostPlayed.games} times, the most of any matchup in league history · ${recordLine(mA, mB, mostPlayed.winsA, mostPlayed.winsB)}${playoffNote(mostPlayed)}`));
+  }
+
+  const eligible = rivalries.filter(r => r.games >= GRUDGE_MIN_GAMES);
+
+  // --- One-Sided Beef: the rivalry with the most lopsided record (by win
+  // percentage gap, so a long dominant stretch outranks a short one at the
+  // same raw win-percentage).
+  const lopsided = eligible.slice().sort((a, b) => {
+    const gapA = Math.abs(a.winsA - a.winsB) / a.games;
+    const gapB = Math.abs(b.winsA - b.winsB) / b.games;
+    if (gapB !== gapA) return gapB - gapA;
+    return b.games - a.games;
+  })[0];
+  if (lopsided) {
+    const dominantRid = lopsided.winsA >= lopsided.winsB ? lopsided.ridA : lopsided.ridB;
+    const underdogRid = dominantRid === lopsided.ridA ? lopsided.ridB : lopsided.ridA;
+    const dominant = getManager(dominantRid);
+    const underdog = getManager(underdogRid);
+    const w = Math.max(lopsided.winsA, lopsided.winsB);
+    const l = Math.min(lopsided.winsA, lopsided.winsB);
+    cards.push(card('🥊', `One-Sided Beef — ${dominant.team_name} over ${underdog.team_name}`,
+      `${w}-${l} (${pct(w, l)}) across ${lopsided.games} meetings${playoffNote(lopsided)}`, true));
+  }
+
+  // --- Dead Even: the rivalry with the record closest to a 50/50 split,
+  // among rivalries with enough games for "close" to mean something.
+  const closest = eligible.slice().sort((a, b) => {
+    const gapA = Math.abs(a.winsA - a.winsB);
+    const gapB = Math.abs(b.winsA - b.winsB);
+    if (gapA !== gapB) return gapA - gapB;
+    return b.games - a.games;
+  })[0];
+  if (closest && (!lopsided || closest.ridA !== lopsided.ridA || closest.ridB !== lopsided.ridB)) {
+    const mA = getManager(closest.ridA);
+    const mB = getManager(closest.ridB);
+    cards.push(card('🎯', `Dead Even — ${mA.team_name} vs ${mB.team_name}`,
+      `${recordLine(mA, mB, closest.winsA, closest.winsB)} across ${closest.games} meetings, the closest series in the league${playoffNote(closest)}`));
+  }
+
+  // --- Statement Game: the single biggest-margin blowout in league
+  // history, regardless of which two teams or how big their overall
+  // rivalry is — this is about one unforgettable game, not a series.
+  const { bySeasonPair } = buildPlayoffMeetings();
+  const statementGame = findStatementGame(bySeasonPair);
+  if (statementGame) {
+    const winnerRid = statementGame.pts1 > statementGame.pts2 ? statementGame.roster1 : statementGame.roster2;
+    const loserRid = winnerRid === statementGame.roster1 ? statementGame.roster2 : statementGame.roster1;
+    const winnerPts = Math.max(statementGame.pts1, statementGame.pts2);
+    const loserPts = Math.min(statementGame.pts1, statementGame.pts2);
+    const winnerM = getManager(winnerRid, statementGame.season);
+    const loserM = getManager(loserRid, statementGame.season);
+    cards.push(card('💥', `Statement Game — ${winnerM.team_name} over ${loserM.team_name}`,
+      `${fmt(winnerPts)} — ${fmt(loserPts)} in ${statementGame.season} Week ${statementGame.week}, a ${fmt(statementGame.margin)}-point margin · the biggest blowout in league history${statementGame.isPlayoffGame ? ' · in the playoffs, no less 🏆' : ''}`));
+  }
+
+  section.innerHTML = cards.length ? `<div class="grudge-grid">${cards.join('')}</div>` : '';
 }
 
 // ============================================================
