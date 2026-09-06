@@ -1274,14 +1274,18 @@
        shown while `.has-scroll-hint` is set (see initTableScrollHints()),
        which tracks actual overflow + scroll position — never stuck on once
        you've scrolled to the end, and never shown at all on a table that
-       already fits. */
+       already fits. Kept translucent (not solid var(--surface)) on purpose:
+       the last visible column often sits right up against this edge, and an
+       opaque strip there blacks out real digits (e.g. the PF column on
+       All-Time Records) instead of just hinting — this should darken, never
+       hide, whatever's underneath. */
     .table-wrap { position: relative; }
     .table-wrap.has-scroll-hint::after {
       content: '';
       position: absolute;
       top: 0; right: 0; bottom: 0;
-      width: 20px;
-      background: linear-gradient(to right, transparent, var(--surface));
+      width: 16px;
+      background: linear-gradient(to right, transparent, rgba(17,19,24,0.45));
       pointer-events: none;
     }
 
