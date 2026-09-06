@@ -1077,6 +1077,12 @@
     margin-left: auto;
   }
 
+  .prophecy-status-group {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
   /* CACHE NOTICE */
   .cache-bar {
     background: rgba(75,142,200,0.08);
@@ -1281,10 +1287,16 @@
 
     /* Prophecies filter bar — status buttons + 3 selects wrapping freely
        (auto width per pill) looks like a staggered mess at phone width.
-       Stack everything into one clean full-width column instead. */
+       Keep the 4 status buttons as one clean even row (a segmented
+       control), and stack the selects into a full-width column below it. */
     .prophecy-filter-bar {
       flex-direction: column;
       align-items: stretch;
+    }
+    .prophecy-status-group .prophecy-filter {
+      flex: 1;
+      padding-left: 4px;
+      padding-right: 4px;
     }
     .prophecy-filter-bar select {
       margin-left: 0;
@@ -1716,10 +1728,12 @@
     </div>
 
     <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center;" class="fade-up prophecy-filter-bar">
-      <button type="button" class="btn btn-ghost prophecy-filter active" data-prophecy-filter="all">All</button>
-      <button type="button" class="btn btn-ghost prophecy-filter" data-prophecy-filter="pending">Pending</button>
-      <button type="button" class="btn btn-ghost prophecy-filter" data-prophecy-filter="hit">Hits</button>
-      <button type="button" class="btn btn-ghost prophecy-filter" data-prophecy-filter="miss">Misses</button>
+      <div class="prophecy-status-group">
+        <button type="button" class="btn btn-ghost prophecy-filter active" data-prophecy-filter="all">All</button>
+        <button type="button" class="btn btn-ghost prophecy-filter" data-prophecy-filter="pending">Pending</button>
+        <button type="button" class="btn btn-ghost prophecy-filter" data-prophecy-filter="hit">Hits</button>
+        <button type="button" class="btn btn-ghost prophecy-filter" data-prophecy-filter="miss">Misses</button>
+      </div>
       <select id="prophecy-category-filter" class="prophecy-category-select">
         <option value="all">All Categories</option>
         <option value="trash-talk">Trash Talk / General</option>
@@ -5340,7 +5354,7 @@ async function init() {
   const bound = new WeakSet();
   function updateWrap(wrap) {
     const hasOverflow = wrap.scrollWidth > wrap.clientWidth + 1;
-    const atEnd = wrap.scrollLeft + wrap.clientWidth >= wrap.scrollWidth - 1;
+    const atEnd = wrap.scrollLeft + wrap.clientWidth >= wrap.scrollWidth - 3;
     wrap.classList.toggle('has-scroll-hint', hasOverflow && !atEnd);
   }
   function scan() {
