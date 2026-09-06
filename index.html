@@ -317,6 +317,32 @@
     line-height: 1;
   }
 
+  .dash-title-link {
+    color: inherit;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    transition: color 0.15s;
+  }
+
+  .dash-title-link:hover {
+    color: var(--accent);
+    text-decoration: underline;
+    text-underline-offset: 4px;
+  }
+
+  .dash-title-icon {
+    font-size: 22px;
+    color: var(--accent);
+    transition: transform 0.15s;
+    display: inline-block;
+  }
+
+  .dash-title-link:hover .dash-title-icon {
+    transform: translate(2px, -2px);
+  }
+
   .page-header p {
     color: var(--muted);
     font-size: 13px;
@@ -566,21 +592,6 @@
 
   .robber-baron-banner.banner-danger .robber-baron-title {
     color: var(--danger);
-  }
-
-  /* LINKOUTS */
-  .linkout-row {
-    display: flex;
-    gap: 12px;
-    flex-wrap: wrap;
-    margin-bottom: 24px;
-  }
-
-  .linkout-row a.btn-ghost {
-    text-decoration: none;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
   }
 
   /* POLLS */
@@ -1018,7 +1029,7 @@
   <!-- DASHBOARD PAGE -->
   <div class="page active" id="page-dashboard">
     <div class="page-header fade-up">
-      <h1 id="dash-league-title">Loading...</h1>
+      <h1><a class="dash-title-link" id="dash-league-title" href="#" target="_blank" rel="noopener" title="Open the Sleeper league page"><span class="dash-title-text">Loading...</span><span class="dash-title-icon" aria-hidden="true">&#8599;</span></a></h1>
       <p id="dash-season-info">Fetching league data...</p>
     </div>
 
@@ -1075,9 +1086,6 @@
         </table>
       </div>
     </div>
-
-    <!-- Linkouts -->
-    <div class="linkout-row fade-up" id="dash-linkouts"></div>
 
     <!-- Polls -->
     <div class="card fade-up" style="margin-bottom:24px;">
@@ -2046,11 +2054,12 @@ function renderDashboard() {
   // unconditionally, up front — the standings computation below has a
   // couple of early `return`s (offseason branch, no-data branch) that must
   // never gate these.
-  renderLinkouts();
   renderAnnouncements();
   renderPolls();
 
-  document.getElementById('dash-league-title').textContent = state.league.name;
+  const titleLink = document.getElementById('dash-league-title');
+  titleLink.querySelector('.dash-title-text').textContent = state.league.name;
+  titleLink.href = LINKOUTS.sleeperUrl;
 
   // Detect offseason: no scored weeks yet for the current season
   const currentSeason = state.league.season || KNOWN_LATEST_SEASON;
@@ -3126,19 +3135,11 @@ function escapeAttr(str) {
 }
 
 // ---------- Linkouts ----------
-// Fill in your real Slack invite link once you have it.
+// The dashboard's big league-name heading doubles as the Sleeper linkout
+// (see renderDashboard) — no separate button row anymore.
 const LINKOUTS = {
-  slackUrl: 'PUT-YOUR-SLACK-INVITE-LINK-HERE',
   sleeperUrl: `https://sleeper.com/leagues/${LEAGUE_ID}`,
 };
-
-function renderLinkouts() {
-  const container = document.querySelector('#dash-linkouts');
-  if (!container) return;
-  container.innerHTML = `
-    <a class="btn btn-ghost" href="${escapeAttr(LINKOUTS.sleeperUrl)}" target="_blank" rel="noopener">🏈 Sleeper League</a>
-    <a class="btn btn-ghost" href="${escapeAttr(LINKOUTS.slackUrl)}" target="_blank" rel="noopener">💬 Slack</a>`;
-}
 
 // ---------- Announcements ----------
 // Newest first. Edit this array directly to post league news.
