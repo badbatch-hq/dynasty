@@ -607,6 +607,12 @@
     border-color: rgba(200,75,75,0.3);
   }
 
+  .whats-new-actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
   .robber-baron-banner.banner-danger .robber-baron-title {
     color: var(--danger);
   }
@@ -1243,9 +1249,28 @@
     .trade-teams { font-size: 12px; }
 
     /* Robber baron */
-    .robber-baron-banner { padding: 14px 16px; gap: 12px; }
+    .robber-baron-banner { padding: 14px 16px; gap: 10px 12px; flex-wrap: wrap; }
     .robber-baron-icon { font-size: 28px; }
     .robber-baron-title { font-size: 18px; }
+    /* What's New banner — buttons crowd the title on a narrow phone when
+       forced onto the same row as the icon/text; drop them to their own
+       full-width row instead, split evenly. */
+    .whats-new-actions { flex-basis: 100%; }
+    .whats-new-actions .btn { flex: 1; }
+
+    /* Any horizontally-scrollable table (standings, history, trophy case,
+       etc.) — a subtle edge fade hints there's more to scroll to instead of
+       a column looking silently cut off at the card's right edge. Harmless
+       no-op when a table already fits the screen. */
+    .table-wrap { position: relative; }
+    .table-wrap::after {
+      content: '';
+      position: absolute;
+      top: 0; right: 0; bottom: 0;
+      width: 20px;
+      background: linear-gradient(to right, transparent, var(--surface));
+      pointer-events: none;
+    }
 
     /* Season blocks */
     .season-title { font-size: 24px; }
@@ -1304,8 +1329,10 @@
         <div class="robber-baron-title">What's New</div>
         <div class="robber-baron-sub">The dashboard just got an update.</div>
       </div>
-      <button type="button" class="btn btn-ghost" id="whats-new-view">See what's new</button>
-      <button type="button" class="btn btn-ghost" id="whats-new-dismiss">Dismiss</button>
+      <div class="whats-new-actions">
+        <button type="button" class="btn btn-ghost" id="whats-new-view">See what's new</button>
+        <button type="button" class="btn btn-ghost" id="whats-new-dismiss">Dismiss</button>
+      </div>
     </div>
 
     <!-- Summary stats -->
@@ -2852,12 +2879,12 @@ function renderDashboard() {
       else if (place === 3) badge = '<span class="badge badge-blue">🥉</span>';
       return `<tr>
         <td class="rank-num ${i < 3 ? 'top3' : ''}">${i + 1}</td>
-        <td colspan="2">${avatarEl(m.avatar, m.display_name)}<span class="team-name">${m.team_name}</span> <span style="color:var(--muted);font-size:11px;">${m.display_name}</span></td>
+        <td colspan="2">${avatarEl(m.avatar, m.display_name)}<span class="team-name">${m.team_name}</span> <span style="color:var(--muted);font-size:11px;">${m.display_name}</span>${badge ? ` ${badge}` : ''}</td>
         <td class="win">${w}</td>
         <td class="loss">${l}</td>
         <td style="font-family:'DM Mono',monospace;font-size:12px;">${pf}</td>
-        <td>—</td>
-        <td>${badge}</td>
+        <td class="standings-col-pa">—</td>
+        <td class="standings-col-streak"></td>
       </tr>`;
     }).join('');
     return;
