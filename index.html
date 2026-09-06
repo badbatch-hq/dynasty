@@ -944,6 +944,21 @@
     font-size: 13px;
   }
 
+  .poll-history-toggle.active {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: rgba(200,168,75,0.1);
+  }
+
+  /* Winning option in a closed poll, shown only in the poll-history view. */
+  .poll-option-winner {
+    border-color: var(--accent);
+  }
+
+  .poll-option-winner .poll-option-bar {
+    background: rgba(200,168,75,0.35);
+  }
+
   /* ANNOUNCEMENTS + CHANGELOG */
   .announcement-item,
   .changelog-item {
@@ -1335,7 +1350,10 @@
 
     <!-- Polls -->
     <div class="card fade-up" style="margin-bottom:24px;">
-      <div class="card-title">Polls</div>
+      <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+        <span>Polls</span>
+        <button type="button" class="btn btn-ghost poll-history-toggle" id="poll-history-toggle">Poll history</button>
+      </div>
       <div class="poll-voter-row">
         <label class="field-label" style="margin:0;">Voting as</label>
         <select id="poll-voter-name" style="width:auto;">
@@ -4879,6 +4897,12 @@ const ANON_VOTER_KEY = 'dynastyhq_anon_voter_id';
 let _pollsLoaded = false;
 let _allPolls = [];
 let _allPollVotes = [];
+// 'active' shows open (not-yet-closed) polls, same as always; 'history' flips
+// the poll card list to closed polls only, newest-closed first, with the
+// winning option highlighted. Toggled via #poll-history-toggle; resets to
+// 'active' on a full page reload (not persisted), same as the other poll UI
+// state (voter/creator name pickers persist via localStorage, this doesn't).
+let _pollView = 'active';
 
 // A per-browser random id, generated once and reused for every anonymous-
 // voting poll this browser ever votes in. It's never tied to a real name —
@@ -4897,12 +4921,33 @@ function renderPolls() {
   populatePollVoterPicker();
   populatePollCreatorPicker();
   wirePollCreateForm();
+  wirePollHistoryToggle();
   if (!_pollsLoaded) {
     _pollsLoaded = true;
     refreshPolls();
   } else {
     renderPollCards();
   }
+}
+
+function wirePollHistoryToggle() {
+  const btn = document.querySelector('#poll-history-toggle');
+  if (!btn || btn.dataset.wired) return;
+  btn.dataset.wired = '1';
+  btn.addEventListener('click', () => {
+    _pollView = _pollView === 'history' ? 'active' : 'history';
+    updatePollHistoryToggleLabel();
+    renderPollCards();
+  });
+  updatePollHistoryToggleLabel();
+}
+
+function updatePollHistoryToggleLabel() {
+  const btn = document.querySelector('#poll-history-toggle');
+  if (!btn) return;
+  const isHistory = _pollView === 'history';
+  btn.textContent = isHistory ? 'Back to active polls' : 'Poll history';
+  btn.classList.toggle('active', isHistory);
 }
 
 // Shared by both name pickers below — same dropdown behavior, independent
@@ -4973,9 +5018,23 @@ function renderPollCards() {
   const container = document.querySelector('#dash-polls');
   if (!container) return;
 
-  const shown = _allPolls.filter(p => p.active);
+  // Previously this always showed every `active`-flagged poll (including ones
+  // auto-closed by a passed closesAt, tagged "Closed" in place) and simply
+  // never surfaced a poll Joe manually deactivated in the sheet. The history
+  // toggle splits that into two real views instead: "active" now means
+  // genuinely still-open (isPollClosed() covers both the manual-flag and
+  // closesAt-expiry cases), and "history" surfaces every closed poll —
+  // manually deactivated ones included — newest-closed first.
+  const isHistory = _pollView === 'history';
+  let shown = _allPolls.filter(p => isHistory ? isPollClosed(p) : !isPollClosed(p));
+  if (isHistory) {
+    shown = shown.slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  }
+
   if (shown.length === 0) {
-    container.innerHTML = '<p class="poll-empty">No active polls right now.</p>';
+    container.innerHTML = isHistory
+      ? '<p class="poll-empty">No completed polls yet.</p>'
+      : '<p class="poll-empty">No active polls right now.</p>';
     return;
   }
 
@@ -4990,14 +5049,21 @@ function renderPollCards() {
     const myVoteKey = poll.anonymousVoting ? getAnonVoterId() : voterName;
     const myVote = myVoteKey ? _allPollVotes.find(v => v.pollId === poll.pollId && v.voterName === myVoteKey) : null;
 
+    // Winner highlighting only applies to closed polls (i.e. the history
+    // view) and only once at least one vote's been cast. Tie-aware — every
+    // option tied for the most votes gets highlighted, not just the first
+    // one found, same convention the Trophy Case uses for tied leaders.
+    const maxCount = total > 0 ? Math.max(...poll.options.map(o => counts[o] || 0)) : -1;
+
     const options = poll.options.map(opt => {
       const pct = total > 0 ? Math.round((counts[opt] / total) * 100) : 0;
       const isMine = myVote && myVote.option === opt;
+      const isWinner = closed && total > 0 && counts[opt] === maxCount;
       return `
-        <button type="button" class="poll-option" data-poll-id="${escapeAttr(poll.pollId)}" data-option="${escapeAttr(opt)}" ${closed ? 'disabled' : ''}>
+        <button type="button" class="poll-option${isWinner ? ' poll-option-winner' : ''}" data-poll-id="${escapeAttr(poll.pollId)}" data-option="${escapeAttr(opt)}" ${closed ? 'disabled' : ''}>
           <span class="poll-option-bar" style="width:${pct}%;"></span>
           <span class="poll-option-label">
-            <span>${isMine ? '✓ ' : ''}${escapeHtml(opt)}</span>
+            <span>${isWinner ? '🏆 ' : ''}${isMine ? '✓ ' : ''}${escapeHtml(opt)}</span>
             <span>${pct}% (${counts[opt]})</span>
           </span>
         </button>`;
@@ -5023,9 +5089,11 @@ function renderPollCards() {
       </div>`;
   }).join('');
 
-  container.querySelectorAll('.poll-option').forEach(btn => {
-    btn.addEventListener('click', () => handlePollVote(btn.dataset.pollId, btn.dataset.option));
-  });
+  if (!isHistory) {
+    container.querySelectorAll('.poll-option').forEach(btn => {
+      btn.addEventListener('click', () => handlePollVote(btn.dataset.pollId, btn.dataset.option));
+    });
+  }
 }
 
 async function handlePollVote(pollId, option) {
