@@ -1073,6 +1073,10 @@
     background: rgba(200,168,75,0.1);
   }
 
+  .prophecy-category-select {
+    margin-left: auto;
+  }
+
   /* CACHE NOTICE */
   .cache-bar {
     background: rgba(75,142,200,0.08);
@@ -1260,16 +1264,31 @@
 
     /* Any horizontally-scrollable table (standings, history, trophy case,
        etc.) — a subtle edge fade hints there's more to scroll to instead of
-       a column looking silently cut off at the card's right edge. Harmless
-       no-op when a table already fits the screen. */
+       a column looking silently cut off at the card's right edge. Only
+       shown while `.has-scroll-hint` is set (see initTableScrollHints()),
+       which tracks actual overflow + scroll position — never stuck on once
+       you've scrolled to the end, and never shown at all on a table that
+       already fits. */
     .table-wrap { position: relative; }
-    .table-wrap::after {
+    .table-wrap.has-scroll-hint::after {
       content: '';
       position: absolute;
       top: 0; right: 0; bottom: 0;
       width: 20px;
       background: linear-gradient(to right, transparent, var(--surface));
       pointer-events: none;
+    }
+
+    /* Prophecies filter bar — status buttons + 3 selects wrapping freely
+       (auto width per pill) looks like a staggered mess at phone width.
+       Stack everything into one clean full-width column instead. */
+    .prophecy-filter-bar {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .prophecy-filter-bar select {
+      margin-left: 0;
+      width: 100%;
     }
 
     /* Season blocks */
@@ -1696,12 +1715,12 @@
       </form>
     </div>
 
-    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center;" class="fade-up">
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center;" class="fade-up prophecy-filter-bar">
       <button type="button" class="btn btn-ghost prophecy-filter active" data-prophecy-filter="all">All</button>
       <button type="button" class="btn btn-ghost prophecy-filter" data-prophecy-filter="pending">Pending</button>
       <button type="button" class="btn btn-ghost prophecy-filter" data-prophecy-filter="hit">Hits</button>
       <button type="button" class="btn btn-ghost prophecy-filter" data-prophecy-filter="miss">Misses</button>
-      <select id="prophecy-category-filter" style="margin-left:auto;">
+      <select id="prophecy-category-filter" class="prophecy-category-select">
         <option value="all">All Categories</option>
         <option value="trash-talk">Trash Talk / General</option>
         <option value="playoff-finish">Playoff Finish</option>
@@ -5308,6 +5327,36 @@ async function init() {
     renderDashboard();
   }, 500);
 }
+
+// Mobile "there's more to scroll" hint on any wide table (.table-wrap has
+// overflow-x:auto site-wide as a blanket safety net for tables that don't
+// fully fit a phone screen). CSS alone can't know whether a given table
+// actually overflows or how far it's already been scrolled, so this tracks
+// both per .table-wrap and toggles `.has-scroll-hint`, which the mobile
+// media query uses to show/hide the edge fade — never stuck on after
+// you've scrolled to the end, and never shown at all on a table that
+// already fits on screen.
+(function initTableScrollHints() {
+  const bound = new WeakSet();
+  function updateWrap(wrap) {
+    const hasOverflow = wrap.scrollWidth > wrap.clientWidth + 1;
+    const atEnd = wrap.scrollLeft + wrap.clientWidth >= wrap.scrollWidth - 1;
+    wrap.classList.toggle('has-scroll-hint', hasOverflow && !atEnd);
+  }
+  function scan() {
+    document.querySelectorAll('.table-wrap').forEach(wrap => {
+      updateWrap(wrap);
+      if (!bound.has(wrap)) {
+        bound.add(wrap);
+        wrap.addEventListener('scroll', () => updateWrap(wrap), { passive: true });
+      }
+    });
+  }
+  window.addEventListener('resize', scan);
+  const mainEl = document.querySelector('main');
+  if (mainEl) new MutationObserver(scan).observe(mainEl, { childList: true, subtree: true });
+  scan();
+})();
 
 init();
 initWhatsNewBanner();
