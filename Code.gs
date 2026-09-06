@@ -46,7 +46,11 @@ const HEADERS = [
 
 // Anyone can post a poll through the /createpoll endpoint below (same
 // open-submission spirit as Prophecies) — no admin key, no approval step.
-// closesAt is optional: blank means the poll never auto-closes.
+// closesAt is optional: blank means the poll never auto-closes on a deadline.
+// A poll can still close before then two other ways: submitPollVote() below
+// auto-closes it the moment vote count reaches getLeagueSize() (everyone's
+// voted), and `active` can always be hand-flipped to FALSE in the sheet for
+// an early manual close — no in-app button for that by design.
 const POLL_HEADERS = ['pollId', 'question', 'options', 'active', 'createdAt', 'closesAt', 'createdBy', 'anonymousVoting'];
 const POLL_VOTE_HEADERS = ['pollId', 'voterName', 'option', 'timestamp'];
 
@@ -298,6 +302,25 @@ function findPollVoteRowIndex(sheet, pollId, voterName) {
   return -1;
 }
 
+function findPollRowIndex(sheet, pollId) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return -1;
+  const ids = sheet.getRange(2, 1, lastRow - 1, 1).getValues(); // pollId only
+  for (let i = 0; i < ids.length; i++) {
+    if (ids[i][0] === pollId) return i + 2;
+  }
+  return -1;
+}
+
+// Number of teams in the current-season league — the "everyone's voted"
+// threshold for auto-closing a poll at full participation. Pulled live from
+// Sleeper rather than a hardcoded 12, so it stays correct if the league ever
+// changes size.
+function getLeagueSize() {
+  const rosters = fetchJson(`https://api.sleeper.app/v1/league/${CONFIG.CURRENT_LEAGUE_ID}/rosters`);
+  return rosters.length;
+}
+
 function submitPollVote(body) {
   const required = ['pollId', 'voterName', 'option'];
   for (const field of required) {
@@ -318,12 +341,39 @@ function submitPollVote(body) {
   const sheet = getPollVotesSheet();
   const rowIndex = findPollVoteRowIndex(sheet, body.pollId, body.voterName);
   const row = [body.pollId, body.voterName, body.option, new Date().toISOString()];
+  const isNewVoter = rowIndex === -1;
 
-  if (rowIndex === -1) {
+  if (isNewVoter) {
     sheet.appendRow(row);
   } else {
     sheet.getRange(rowIndex, 1, 1, POLL_VOTE_HEADERS.length).setValues([row]);
   }
+
+  // Auto-close once every manager has voted. Only a brand-new voter can push
+  // the vote count up (changing an existing vote overwrites a row rather than
+  // adding one), so this only ever needs checking on that path. This counts
+  // raw vote rows, not confirmed real managers — an anonymous-voting poll's
+  // rows are per-browser ids rather than real names, so "12 votes" and "12
+  // managers" aren't strictly guaranteed to be the same 12 people there, same
+  // honor-system caveat as the rest of Polls/Prophecies. Wrapped in try/catch
+  // so a hiccup fetching the roster count (a transient Sleeper API error)
+  // never breaks the vote itself — worst case, the poll just waits for
+  // closesAt or a manual close instead of closing this instant.
+  if (isNewVoter) {
+    try {
+      const voteCount = getAllPollVotes().filter(v => v.pollId === body.pollId).length;
+      if (voteCount >= getLeagueSize()) {
+        const pollsSheet = getPollsSheet();
+        const pollRow = findPollRowIndex(pollsSheet, body.pollId);
+        if (pollRow !== -1) {
+          pollsSheet.getRange(pollRow, POLL_HEADERS.indexOf('active') + 1).setValue(false);
+        }
+      }
+    } catch (e) {
+      // Non-fatal — see comment above. The vote itself already saved.
+    }
+  }
+
   return { ok: true };
 }
 
