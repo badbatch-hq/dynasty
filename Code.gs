@@ -47,7 +47,7 @@ const HEADERS = [
 // Anyone can post a poll through the /createpoll endpoint below (same
 // open-submission spirit as Prophecies) — no admin key, no approval step.
 // closesAt is optional: blank means the poll never auto-closes.
-const POLL_HEADERS = ['pollId', 'question', 'options', 'active', 'createdAt', 'closesAt', 'createdBy'];
+const POLL_HEADERS = ['pollId', 'question', 'options', 'active', 'createdAt', 'closesAt', 'createdBy', 'anonymousVoting'];
 const POLL_VOTE_HEADERS = ['pollId', 'voterName', 'option', 'timestamp'];
 
 // ---------- HTTP entry points ----------
@@ -111,17 +111,39 @@ function jsonResponse(obj) {
 
 // ---------- Sheet helpers ----------
 
-function getSheet() {
+// Shared by getSheet()/getPollsSheet()/getPollVotesSheet() below.
+// getSheetByName() does an exact, CASE-SENSITIVE lookup, but Google Sheets
+// enforces tab-name uniqueness case-INSENSITIVELY — so a tab that ended up
+// named e.g. "pollvotes" or "Poll Votes" silently hides from our lookup,
+// and insertSheet() then throws "a sheet with this name already exists"
+// when it collides with that same name in a different case. Falling back to
+// a case-insensitive scan (both before AND after a failed insert, in case
+// two requests raced to create the same sheet) avoids failing the whole
+// request over a naming quirk.
+function findSheetCaseInsensitive(ss, name) {
+  return ss.getSheets().find(s => s.getName().toLowerCase() === name.toLowerCase()) || null;
+}
+
+function getOrCreateSheet(name, headers) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName(CONFIG.SHEET_NAME);
+  let sheet = ss.getSheetByName(name) || findSheetCaseInsensitive(ss, name);
   if (!sheet) {
-    sheet = ss.insertSheet(CONFIG.SHEET_NAME);
+    try {
+      sheet = ss.insertSheet(name);
+    } catch (e) {
+      sheet = findSheetCaseInsensitive(ss, name);
+      if (!sheet) throw e; // genuinely nothing there — surface the real error
+    }
   }
   if (sheet.getLastRow() === 0) {
-    sheet.appendRow(HEADERS);
+    sheet.appendRow(headers);
     sheet.setFrozenRows(1);
   }
   return sheet;
+}
+
+function getSheet() {
+  return getOrCreateSheet(CONFIG.SHEET_NAME, HEADERS);
 }
 
 function getAllPredictions() {
@@ -188,29 +210,11 @@ function submitPrediction(body) {
 // how the Prophecies hit-rate stats are computed.
 
 function getPollsSheet() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName(CONFIG.POLLS_SHEET_NAME);
-  if (!sheet) {
-    sheet = ss.insertSheet(CONFIG.POLLS_SHEET_NAME);
-  }
-  if (sheet.getLastRow() === 0) {
-    sheet.appendRow(POLL_HEADERS);
-    sheet.setFrozenRows(1);
-  }
-  return sheet;
+  return getOrCreateSheet(CONFIG.POLLS_SHEET_NAME, POLL_HEADERS);
 }
 
 function getPollVotesSheet() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName(CONFIG.POLL_VOTES_SHEET_NAME);
-  if (!sheet) {
-    sheet = ss.insertSheet(CONFIG.POLL_VOTES_SHEET_NAME);
-  }
-  if (sheet.getLastRow() === 0) {
-    sheet.appendRow(POLL_VOTE_HEADERS);
-    sheet.setFrozenRows(1);
-  }
-  return sheet;
+  return getOrCreateSheet(CONFIG.POLL_VOTES_SHEET_NAME, POLL_VOTE_HEADERS);
 }
 
 // Polls sheet columns: pollId, question, options (comma-separated), active
@@ -265,6 +269,7 @@ function submitPoll(body) {
     now.toISOString(),
     closesAt,
     body.createdBy || '',
+    !!body.anonymousVoting,
   ]);
   return { ok: true, id };
 }

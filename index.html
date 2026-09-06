@@ -593,15 +593,28 @@
 
   .poll-card {
     margin-bottom: 20px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--border);
   }
 
   .poll-card:last-child {
     margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: none;
   }
 
   .poll-question {
     font-weight: 600;
+    margin-bottom: 4px;
+  }
+
+  .poll-meta {
+    font-size: 11px;
+    color: var(--muted);
     margin-bottom: 10px;
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
   }
 
   .poll-option {
@@ -612,17 +625,22 @@
     background: var(--surface2);
     border: 1px solid var(--border);
     border-radius: 8px;
-    padding: 8px 12px;
+    padding: 9px 12px;
     margin-bottom: 8px;
     cursor: pointer;
     font-family: 'DM Sans', sans-serif;
     font-size: 13px;
     color: var(--text);
     text-align: left;
+    transition: border-color 0.15s, transform 0.1s;
   }
 
   .poll-option:hover {
     border-color: var(--accent);
+  }
+
+  .poll-option:active:not(:disabled) {
+    transform: scale(0.995);
   }
 
   .poll-option:disabled {
@@ -1083,6 +1101,10 @@
               <option value="">Posting as...</option>
             </select>
           </div>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin:4px 0 10px;cursor:pointer;">
+            <input type="checkbox" id="poll-anonymous-voting" style="width:auto;margin:0;">
+            Anonymous voting (hides who voted for what)
+          </label>
           <input type="text" id="poll-question" placeholder="Question" required style="width:100%;margin-bottom:8px;">
           <textarea id="poll-options" placeholder="One option per line (at least 2)" required rows="3" style="width:100%;margin-bottom:8px;"></textarea>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
@@ -3152,9 +3174,23 @@ function renderAnnouncements() {
 // versa. Each remembers its own last choice.
 const POLL_VOTER_KEY = 'dynastyhq_voter_name';
 const POLL_CREATOR_KEY = 'dynastyhq_creator_name';
+const ANON_VOTER_KEY = 'dynastyhq_anon_voter_id';
 let _pollsLoaded = false;
 let _allPolls = [];
 let _allPollVotes = [];
+
+// A per-browser random id, generated once and reused for every anonymous-
+// voting poll this browser ever votes in. It's never tied to a real name —
+// it only exists so a browser can recognize/change its own vote later,
+// same purpose the real name serves for a normal poll.
+function getAnonVoterId() {
+  let id = localStorage.getItem(ANON_VOTER_KEY);
+  if (!id) {
+    id = 'anon-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    localStorage.setItem(ANON_VOTER_KEY, id);
+  }
+  return id;
+}
 
 function renderPolls() {
   populatePollVoterPicker();
@@ -3247,7 +3283,11 @@ function renderPollCards() {
   container.innerHTML = shown.map(poll => {
     const closed = isPollClosed(poll);
     const { counts, total } = tallyPoll(poll);
-    const myVote = voterName ? _allPollVotes.find(v => v.pollId === poll.pollId && v.voterName === voterName) : null;
+    // Anonymous-voting polls are tracked by a per-browser random id instead of
+    // the picked "Voting as" name, so this browser can still see/change its
+    // own vote without that vote ever being tied to a real name anywhere.
+    const myVoteKey = poll.anonymousVoting ? getAnonVoterId() : voterName;
+    const myVote = myVoteKey ? _allPollVotes.find(v => v.pollId === poll.pollId && v.voterName === myVoteKey) : null;
 
     const options = poll.options.map(opt => {
       const pct = total > 0 ? Math.round((counts[opt] / total) * 100) : 0;
@@ -3262,9 +3302,21 @@ function renderPollCards() {
         </button>`;
     }).join('');
 
+    const metaParts = [];
+    metaParts.push(closed ? 'Status: Closed' : 'Status: Open');
+    if (poll.closesAt) {
+      const closesLabel = new Date(poll.closesAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      metaParts.push(closed ? `Closed ${closesLabel}` : `Closes ${closesLabel}`);
+    } else {
+      metaParts.push('No expiration');
+    }
+    if (poll.createdBy) metaParts.push(`Posted by ${escapeHtml(poll.createdBy)}`);
+    if (poll.anonymousVoting) metaParts.push('Anonymous voting');
+
     return `
       <div class="poll-card">
         <div class="poll-question">${escapeHtml(poll.question)}${closed ? ' <span class="poll-closed-tag">Closed</span>' : ''}</div>
+        ${metaParts.length ? `<div class="poll-meta">${metaParts.map(m => `<span>${m}</span>`).join('')}</div>` : ''}
         ${options}
         <div style="font-size:11px;color:var(--muted);margin-top:4px;">${total} vote${total === 1 ? '' : 's'}</div>
       </div>`;
@@ -3276,11 +3328,20 @@ function renderPollCards() {
 }
 
 async function handlePollVote(pollId, option) {
-  const select = document.querySelector('#poll-voter-name');
-  const voterName = select?.value;
-  if (!voterName) {
-    alert('Pick your name from the "Voting as" dropdown first.');
-    return;
+  const poll = _allPolls.find(p => p.pollId === pollId);
+  let voterName;
+  if (poll && poll.anonymousVoting) {
+    // No name is ever picked or sent for an anonymous-voting poll — this
+    // browser's own random id is the only thing used to let it recognize/
+    // change its own vote later.
+    voterName = getAnonVoterId();
+  } else {
+    const select = document.querySelector('#poll-voter-name');
+    voterName = select?.value;
+    if (!voterName) {
+      alert('Pick your name from the "Voting as" dropdown first.');
+      return;
+    }
   }
 
   // Optimistic local update so voting feels instant, then reconcile with the
@@ -3332,6 +3393,7 @@ async function handlePollCreate(e) {
   const options = document.querySelector('#poll-options').value
     .split('\n').map(o => o.trim()).filter(Boolean);
   const durationDays = document.querySelector('#poll-duration').value;
+  const anonymousVoting = document.querySelector('#poll-anonymous-voting')?.checked || false;
 
   if (!question || options.length < 2) {
     alert('Enter a question and at least 2 options (one per line).');
@@ -3343,7 +3405,7 @@ async function handlePollCreate(e) {
   try {
     const resp = await fetch(PROPHECY_CONFIG.APPS_SCRIPT_URL, {
       method: 'POST',
-      body: JSON.stringify({ action: 'createpoll', question, options, durationDays, createdBy: creatorName }),
+      body: JSON.stringify({ action: 'createpoll', question, options, durationDays, createdBy: creatorName, anonymousVoting }),
     });
     const data = await resp.json();
     if (!data.ok) {
