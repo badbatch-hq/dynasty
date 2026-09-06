@@ -668,6 +668,74 @@
     letter-spacing: 1px;
   }
 
+  /* Trophy Case (History page) — a badge-shelf grid of small trophy tiles,
+     deliberately not built from the robber-baron-banner components above:
+     there are 15-20+ of these on screen at once (league view or a team's
+     personal case), so each one is a compact icon+name+holder+detail tile
+     rather than a hero banner. Same tile markup renders both the League
+     Trophies view and every manager's personal Team Trophy Case — only the
+     data going in differs. */
+  .trophy-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+  }
+
+  .trophy-tile {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .trophy-tile .trophy-icon { font-size: 22px; margin-bottom: 2px; }
+
+  .trophy-tile .trophy-name {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 14px;
+    letter-spacing: 1px;
+    color: var(--accent);
+  }
+
+  .trophy-tile .trophy-holder {
+    font-size: 12px;
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  .trophy-tile .trophy-detail {
+    font-size: 11px;
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+  }
+
+  /* A trophy nobody's claimed yet (e.g. no undefeated season on record) —
+     dashed border, dimmed, so it still fills a grid slot ("go big") without
+     reading as a real accomplishment. */
+  .trophy-tile.unclaimed {
+    opacity: 0.55;
+    border-style: dashed;
+  }
+
+  .trophy-tile.unclaimed .trophy-holder {
+    color: var(--muted);
+    font-weight: 400;
+    font-style: italic;
+  }
+
+  /* A trophy that's unflattering to hold (worst score, longest losing
+     streak, negative career trade value) — same subtle red tint already
+     used for banner-danger. */
+  .trophy-tile.danger {
+    border-color: rgba(200,75,75,0.3);
+    background: rgba(200,75,75,0.05);
+  }
+
+  .trophy-tile.danger .trophy-name { color: var(--danger); }
+
   /* Per-asset and per-side point totals on trade cards */
   .asset-pts {
     color: var(--muted);
@@ -1348,6 +1416,17 @@
       </div>
     </div>
 
+    <!-- Trophy Case -->
+    <div class="card fade-up" style="margin-bottom:24px;">
+      <div class="card-title">Trophy Case</div>
+      <div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;">
+        <select id="trophy-case-selector" onchange="renderTrophyCase()">
+          <option value="league">League Trophies</option>
+        </select>
+      </div>
+      <div id="trophy-case-body"></div>
+    </div>
+
     <!-- Season by season -->
     <div id="seasons-container"></div>
   </div>
@@ -1953,14 +2032,30 @@ function buildAllMatchups() {
   state.allMatchups = [];
   state.allMatchupsAll = [];
 
+  // For whichever season is CURRENTLY being played, Sleeper's matchup data
+  // updates live throughout the week — league.settings.last_scored_leg
+  // ticks up as soon as the week's first stats come in (e.g. Thursday
+  // night), not once the week actually finishes. A game pulled mid-week
+  // can have one side's real partial score against an opponent who simply
+  // hasn't kicked off yet, which would otherwise get counted everywhere
+  // downstream (H2H, streaks, Trophy Case) as a real, final result — and a
+  // side sitting at 0 before its games start would wrongly look like a
+  // historic low score. Only weeks strictly BEFORE that live week count as
+  // final for the current season; every other (past) season's own
+  // last_scored_leg reflects its true completed final week, so this only
+  // ever trims data for the season still in progress.
+  const currentSeason = state.league?.season || KNOWN_LATEST_SEASON;
+
   for (const season of SEASONS) {
     const sd = state.seasonData[season];
     if (!sd) continue;
 
     const playoffWeekStart = sd.league?.settings?.playoff_week_start || 15;
+    const liveWeekCutoff = season === currentSeason ? (sd.league?.settings?.last_scored_leg || 0) : null;
 
     for (const { week, data } of sd.matchups) {
       if (!data || data.length === 0) continue;
+      if (liveWeekCutoff != null && week >= liveWeekCutoff) continue;
 
       // Group by matchup_id
       const byMatchup = {};
@@ -2431,6 +2526,28 @@ function getPlayoffPlacements(season) {
   return placements;
 }
 
+// Career playoff win-loss record per roster, across every season on file.
+// Sourced from each season's real winners_bracket w/l fields — NOT derived
+// from raw matchup scores like the single-game "record" trophies above —
+// so this is immune to the same playoff bye/placement-week data quirk that
+// can put a genuine (non-placeholder) 0 on one side of a matchup entry
+// (see status.md part 9). Every decided bracket game counts, not just
+// placement games (games without a `p` still have real w/l once played).
+function computePlayoffRecords() {
+  const records = {};
+  getAllManagers().forEach(m => { records[m.roster_id] = { wins: 0, losses: 0 }; });
+  Object.values(state.seasonData).forEach(sd => {
+    (sd.winnersbracket || []).forEach(game => {
+      if (game.w == null || game.l == null) return;
+      if (!records[game.w]) records[game.w] = { wins: 0, losses: 0 };
+      if (!records[game.l]) records[game.l] = { wins: 0, losses: 0 };
+      records[game.w].wins++;
+      records[game.l].losses++;
+    });
+  });
+  return records;
+}
+
 // ============================================================
 // MANAGER HELPERS
 // ============================================================
@@ -2805,10 +2922,18 @@ function computeStreaks() {
 // ============================================================
 function renderHistory() {
   renderAllTimeRecords();
+  populateTrophyCaseSelector();
+  renderTrophyCase();
   renderSeasonBlocks();
 }
 
-function renderAllTimeRecords() {
+// Career win/loss/points/championships/playoff-apps per roster, computed
+// once from real matchup + bracket data. Shared by the All-Time Records
+// table and the Trophy Case below, so a career number never disagrees
+// between the two — extracted from what used to be inline in
+// renderAllTimeRecords (no behavior change there; adds runner_ups, used
+// only by the Trophy Case's per-team "Runner-Up Finishes" tile).
+function computeCareerRecords() {
   const records = {};
 
   getAllManagers().forEach(m => {
@@ -2816,6 +2941,7 @@ function renderAllTimeRecords() {
       manager: m,
       wins: 0, losses: 0, pf: 0,
       championships: 0,
+      runner_ups: 0,
       playoff_apps: 0,
     };
   });
@@ -2833,7 +2959,7 @@ function renderAllTimeRecords() {
     });
   });
 
-  // Championships & playoff apps from real bracket data
+  // Championships, runner-ups & playoff apps from real bracket data
   for (const season of SEASONS) {
     const sd = state.seasonData[season];
     if (!sd) continue;
@@ -2842,31 +2968,52 @@ function renderAllTimeRecords() {
     const hasPlayoffData = Object.keys(placements).length > 0;
     const playoffTeams = 6;
 
-    // Playoff appearances: anyone with a placement entry
+    // Playoff appearances: anyone with a placement entry. When there's no
+    // real bracket data, fall back to "top 6 by record" — but ONLY for a
+    // season whose regular season has actually finished (regularSeasonEnded).
+    // That fallback exists for a season that really happened but had its
+    // placement metadata wiped (e.g. 2025, post-rollover — see the backlog),
+    // reconstructed from real matchup data via computeSeasonStandings. It
+    // must NOT fire for a season that simply hasn't reached (or started)
+    // its playoffs yet — the currently-in-progress season would otherwise
+    // get its early, still-mostly-0-0 "standings" credited as a phantom
+    // playoff appearance for whichever 6 teams the tiebreak sorts first,
+    // inflating a manager's career count past what real completed seasons
+    // support (reported by Joe: 6 appearances shown with only 5 real
+    // historical seasons on record).
     const rosterStatsZeroed = (sd.rosters || []).every(r => (r.settings?.wins || 0) === 0 && (r.settings?.losses || 0) === 0);
     const computedStats = rosterStatsZeroed ? computeSeasonStandings(season) : null;
 
     const playoffRosterIds = hasPlayoffData
       ? new Set(Object.keys(placements).map(Number))
-      : new Set(
-          [...(sd.rosters || [])].sort((a, b) => {
-            const wa = computedStats ? (computedStats[a.roster_id]?.wins || 0) : (a.settings?.wins || 0);
-            const wb = computedStats ? (computedStats[b.roster_id]?.wins || 0) : (b.settings?.wins || 0);
-            return wb - wa;
-          }).slice(0, playoffTeams).map(r => r.roster_id)
-        );
+      : regularSeasonEnded(season)
+        ? new Set(
+            [...(sd.rosters || [])].sort((a, b) => {
+              const wa = computedStats ? (computedStats[a.roster_id]?.wins || 0) : (a.settings?.wins || 0);
+              const wb = computedStats ? (computedStats[b.roster_id]?.wins || 0) : (b.settings?.wins || 0);
+              return wb - wa;
+            }).slice(0, playoffTeams).map(r => r.roster_id)
+          )
+        : new Set(); // season hasn't actually finished yet — no real playoff field exists to credit
 
     playoffRosterIds.forEach(rid => {
       if (records[rid]) records[rid].playoff_apps++;
     });
 
-    // Champion = place 1
+    // Champion = place 1, runner-up = place 2
     Object.entries(placements).forEach(([rid, place]) => {
       const r = records[Number(rid)];
       if (!r) return;
       if (place === 1) r.championships++;
+      if (place === 2) r.runner_ups++;
     });
   }
+
+  return records;
+}
+
+function renderAllTimeRecords() {
+  const records = computeCareerRecords();
 
   const sorted = Object.values(records)
     .sort((a, b) => (b.wins / Math.max(1, b.wins + b.losses)) - (a.wins / Math.max(1, a.wins + a.losses)));
@@ -2886,6 +3033,533 @@ function renderAllTimeRecords() {
       <td style="color:var(--muted);font-family:'DM Mono',monospace;font-size:12px;">${r.playoff_apps || '—'}</td>
     </tr>`;
   }).join('');
+}
+
+// ============================================================
+// TROPHY CASE
+// ============================================================
+// Two views sharing one tile renderer: League Trophies (one all-time
+// winner per record, computed over the whole league's history) and a
+// per-manager Team Trophy Case (the same shape of tile, scoped to one
+// roster). Selected via #trophy-case-selector on the History page —
+// "league" for the former, a roster_id (as a string, straight from the
+// selector's value) for the latter.
+
+// Longest all-time win/loss streak per roster, walked chronologically
+// across every season and week (regular season + playoffs, from
+// state.allMatchupsAll — a rivalry-style "every game ever played" view,
+// same source the Grudge Match Tracker uses). This is a career-long run,
+// a different concept from computeStreaks() above, which only reports
+// the CURRENT season's live streak for the Standings table.
+function computeAllTimeStreaks() {
+  const seasonIndex = {};
+  SEASONS.forEach((s, i) => { seasonIndex[s] = i; });
+
+  const gamesByRoster = {};
+  getAllManagers().forEach(m => { gamesByRoster[m.roster_id] = []; });
+
+  state.allMatchupsAll.forEach(m => {
+    [[m.roster1, m.pts1, m.pts2], [m.roster2, m.pts2, m.pts1]].forEach(([rid, mine, theirs]) => {
+      if (!gamesByRoster[rid]) gamesByRoster[rid] = [];
+      // Tie handling matches the rest of the site (renderH2H, the Grudge
+      // Match Tracker): score comparison only, no separate tie bucket.
+      gamesByRoster[rid].push({ season: m.season, week: m.week, won: mine > theirs });
+    });
+  });
+
+  const result = {};
+  Object.entries(gamesByRoster).forEach(([rid, games]) => {
+    games.sort((a, b) => (seasonIndex[a.season] - seasonIndex[b.season]) || (a.week - b.week));
+
+    let bestWin = null, bestLoss = null;
+    let curType = null, curCount = 0, curStartSeason = null, curStartWeek = null;
+
+    games.forEach(g => {
+      const t = g.won ? 'W' : 'L';
+      if (t === curType) curCount++;
+      else { curType = t; curCount = 1; curStartSeason = g.season; curStartWeek = g.week; }
+
+      const run = { count: curCount, startSeason: curStartSeason, startWeek: curStartWeek, endSeason: g.season, endWeek: g.week };
+      if (t === 'W' && (!bestWin || curCount > bestWin.count)) bestWin = run;
+      if (t === 'L' && (!bestLoss || curCount > bestLoss.count)) bestLoss = run;
+    });
+
+    result[rid] = { bestWin: bestWin || { count: 0 }, bestLoss: bestLoss || { count: 0 } };
+  });
+
+  return result;
+}
+
+function trophySeasonWeek(season, week) { return `${season} Wk ${week}`; }
+
+// Returns every entry tied for the best value (max or min) in `entries` —
+// not just the first one a plain .sort()[0] would arbitrarily pick. With
+// 12 teams over a handful of seasons, ties on a count-based record
+// (championships, playoff appearances, a streak length, trades in a
+// season) are a real possibility, not a hypothetical — silently crowning
+// one co-holder while dropping an equally-deserving other one would be
+// misleading. A small epsilon on the comparison absorbs floating-point
+// noise from summed decimal point totals (repeated += on 2-decimal
+// numbers can drift by a fraction of a cent) without ever missing a real
+// tie or inventing a fake one.
+function tiedLeaders(entries, valueFn, direction) {
+  if (entries.length === 0) return [];
+  let best = direction === 'min' ? Infinity : -Infinity;
+  entries.forEach(e => {
+    const v = valueFn(e);
+    if (direction === 'min' ? v < best : v > best) best = v;
+  });
+  return entries.filter(e => Math.abs(valueFn(e) - best) < 1e-9);
+}
+
+// Formats a tie-aware trophy tile's holder/detail. `leaders` is
+// [{name, qualifier}], one per tied co-holder — `qualifier` is whatever
+// short context can legitimately differ between two co-holders of the
+// same record (a season, a "season Wk week", a "through ..." streak
+// marker, or an individual W-L when the tied metric is a rate like win%)
+// and gets folded into the holder line in parentheses; `sharedDetail` is
+// the metric value itself, common to every tied leader, shown once. A
+// single leader renders exactly as a normal (non-tied) tile always has.
+function tiedHolderDetail(leaders, sharedDetail) {
+  if (leaders.length === 1) {
+    // Matches the original (pre-tie-handling) single-winner format exactly:
+    // the qualifier (season/week/record) rides in the detail line, not the
+    // holder — only a real tie moves it into parentheses next to each name.
+    const detail = leaders[0].qualifier ? `${sharedDetail} · ${leaders[0].qualifier}` : sharedDetail;
+    return { holder: leaders[0].name, detail };
+  }
+  const parts = leaders.map(l => l.qualifier ? `${l.name} (${l.qualifier})` : l.name);
+  const holder = parts.length === 2
+    ? parts.join(' & ')
+    : `${parts.slice(0, -1).join(', ')} & ${parts[parts.length - 1]}`;
+  return { holder, detail: `${sharedDetail} — ${leaders.length}-way tie` };
+}
+
+// League-wide trophies — one winner (or several, on a tie — see
+// tiedLeaders/tiedHolderDetail above — or "unclaimed") per record,
+// computed over every real game/trade/season this league has on file.
+function buildLeagueTrophies() {
+  const trophies = [];
+  const allGames = state.allMatchupsAll;
+  if (allGames.length === 0) return trophies;
+
+  // Regular season only — used below for the single-game "record" trophies
+  // (Highest/Lowest Score, Closest Game, Shootout/Dud of the Century).
+  // Playoff bracket weeks can include bye/placement-game artifacts where
+  // Sleeper returns a real opponent score paired against a team sitting at
+  // a genuine (non-placeholder) 0 — e.g. a bye in an odd-sized bracket —
+  // which isn't a real head-to-head result and would otherwise corrupt an
+  // "ever" record. Regular season data is a clean, uniform round robin
+  // with no such structural gaps, so these trophies are scoped to it.
+  // First 200-Point Week and Biggest Blowout deliberately stay on the full
+  // `allGames` set (see status.md part 9 for why).
+  const regularSeasonGames = state.allMatchups;
+
+  const seasonIndex = {};
+  SEASONS.forEach((s, i) => { seasonIndex[s] = i; });
+  const chronoGames = allGames.slice()
+    .sort((a, b) => (seasonIndex[a.season] - seasonIndex[b.season]) || (a.week - b.week));
+
+  // First 200-Point Week — chronologically first, but two teams CAN cross
+  // 200 for the first time in the same week (a real tie, not a ranking).
+  const first200Candidates = [];
+  chronoGames.forEach((m, order) => {
+    [[m.roster1, m.pts1], [m.roster2, m.pts2]].forEach(([rid, pts]) => {
+      if (pts >= 200) first200Candidates.push({ rid, pts, season: m.season, week: m.week, order });
+    });
+  });
+  if (first200Candidates.length) {
+    const leaders = tiedLeaders(first200Candidates, c => c.order, 'min');
+    // Unlike the other tie cases below, what's shared here is the WEEK
+    // (both crossed 200 for the first time at the same point in league
+    // history) — their actual point totals that week can differ, so each
+    // leader's own score is the qualifier, not the shared value.
+    const formatted = leaders.map(c => ({ name: getManager(c.rid, c.season).team_name, qualifier: `${fmt(c.pts)} pts` }));
+    const { holder, detail } = tiedHolderDetail(formatted, trophySeasonWeek(leaders[0].season, leaders[0].week));
+    trophies.push({ icon: '🎯', name: 'First 200-Point Week', holder, detail });
+  } else {
+    trophies.push({ icon: '🎯', name: 'First 200-Point Week', unclaimed: true, detail: 'No 200-point week yet' });
+  }
+
+  // Highest / Lowest single-team score ever (regular season only — see the
+  // comment on regularSeasonGames above)
+  const allScores = [];
+  regularSeasonGames.forEach(m => {
+    allScores.push({ rid: m.roster1, pts: m.pts1, season: m.season, week: m.week });
+    allScores.push({ rid: m.roster2, pts: m.pts2, season: m.season, week: m.week });
+  });
+  const highestLeaders = tiedLeaders(allScores, s => s.pts, 'max');
+  const lowestLeaders = tiedLeaders(allScores, s => s.pts, 'min');
+  if (highestLeaders.length) {
+    const formatted = highestLeaders.map(s => ({ name: getManager(s.rid, s.season).team_name, qualifier: trophySeasonWeek(s.season, s.week) }));
+    const { holder, detail } = tiedHolderDetail(formatted, `${fmt(highestLeaders[0].pts)} pts`);
+    trophies.push({ icon: '🚀', name: 'Highest Score Ever', holder, detail });
+  }
+  if (lowestLeaders.length) {
+    const formatted = lowestLeaders.map(s => ({ name: getManager(s.rid, s.season).team_name, qualifier: trophySeasonWeek(s.season, s.week) }));
+    const { holder, detail } = tiedHolderDetail(formatted, `${fmt(lowestLeaders[0].pts)} pts`);
+    trophies.push({ icon: '🥶', name: 'Lowest Score Ever', holder, detail });
+  }
+
+  // Biggest Blowout — reuses the exact same computation as the Grudge Match
+  // Tracker's Statement Game (findStatementGame), so the two always agree.
+  // Not tie-aware like the rest of this function: it shares that logic with
+  // the Grudge Match Tracker card, and an exact decimal-margin tie between
+  // two real fantasy scores is astronomically unlikely — not worth forking
+  // the shared function (or its display) over.
+  const { bySeasonPair } = buildPlayoffMeetings();
+  const blowout = findStatementGame(bySeasonPair);
+  if (blowout) {
+    const winnerRid = blowout.pts1 > blowout.pts2 ? blowout.roster1 : blowout.roster2;
+    const loserRid = winnerRid === blowout.roster1 ? blowout.roster2 : blowout.roster1;
+    trophies.push({
+      icon: '💥', name: 'Biggest Blowout',
+      holder: `${getManager(winnerRid, blowout.season).team_name} over ${getManager(loserRid, blowout.season).team_name}`,
+      detail: `${fmt(blowout.margin)}-pt margin · ${trophySeasonWeek(blowout.season, blowout.week)}${blowout.isPlayoffGame ? ' · playoffs 🏆' : ''}`,
+    });
+  }
+
+  // Closest Game Ever (regular season only — see regularSeasonGames above).
+  // A true 0-margin tie doesn't count as "closest" — it's unresolved, not a
+  // nail-biter with a winner.
+  const closestCandidates = [];
+  regularSeasonGames.forEach(m => {
+    const margin = Math.abs(m.pts1 - m.pts2);
+    if (margin === 0) return;
+    closestCandidates.push({ ...m, margin });
+  });
+  const closestLeaders = tiedLeaders(closestCandidates, g => g.margin, 'min');
+  if (closestLeaders.length) {
+    const formatted = closestLeaders.map(g => {
+      const winnerRid = g.pts1 > g.pts2 ? g.roster1 : g.roster2;
+      const loserRid = winnerRid === g.roster1 ? g.roster2 : g.roster1;
+      return { name: `${getManager(winnerRid, g.season).team_name} over ${getManager(loserRid, g.season).team_name}`, qualifier: trophySeasonWeek(g.season, g.week) };
+    });
+    const { holder, detail } = tiedHolderDetail(formatted, `${fmt(closestLeaders[0].margin)}-pt margin`);
+    trophies.push({ icon: '😬', name: 'Closest Game Ever', holder, detail });
+  }
+
+  // Highest / Lowest combined score in a single matchup (regular season
+  // only — see regularSeasonGames above)
+  const combinedGames = regularSeasonGames.map(m => ({ ...m, combined: m.pts1 + m.pts2 }));
+  const shootoutLeaders = tiedLeaders(combinedGames, g => g.combined, 'max');
+  const dudLeaders = tiedLeaders(combinedGames, g => g.combined, 'min');
+  if (shootoutLeaders.length) {
+    const formatted = shootoutLeaders.map(g => ({ name: `${getManager(g.roster1, g.season).team_name} vs ${getManager(g.roster2, g.season).team_name}`, qualifier: trophySeasonWeek(g.season, g.week) }));
+    const { holder, detail } = tiedHolderDetail(formatted, `${fmt(shootoutLeaders[0].combined)} combined pts`);
+    trophies.push({ icon: '🔥', name: 'Shootout of the Century', holder, detail });
+  }
+  if (dudLeaders.length) {
+    const formatted = dudLeaders.map(g => ({ name: `${getManager(g.roster1, g.season).team_name} vs ${getManager(g.roster2, g.season).team_name}`, qualifier: trophySeasonWeek(g.season, g.week) }));
+    const { holder, detail } = tiedHolderDetail(formatted, `${fmt(dudLeaders[0].combined)} combined pts`);
+    trophies.push({ icon: '🧊', name: 'Dud of the Century', holder, detail });
+  }
+
+  // Most Championships / Most Playoff Appearances — same career tallies the
+  // All-Time Records table shows, so these never disagree with it.
+  const careerRecords = computeCareerRecords();
+  const careerList = Object.values(careerRecords);
+  const championshipLeaders = tiedLeaders(careerList, r => r.championships, 'max');
+  if (championshipLeaders.length && championshipLeaders[0].championships > 0) {
+    const formatted = championshipLeaders.map(r => ({ name: r.manager.team_name }));
+    const { holder, detail } = tiedHolderDetail(formatted, `${championshipLeaders[0].championships} title${championshipLeaders[0].championships === 1 ? '' : 's'}`);
+    trophies.push({ icon: '👑', name: 'Most Championships', holder, detail });
+  } else {
+    trophies.push({ icon: '👑', name: 'Most Championships', unclaimed: true, detail: 'No champion crowned yet' });
+  }
+
+  const playoffAppLeaders = tiedLeaders(careerList, r => r.playoff_apps, 'max');
+  if (playoffAppLeaders.length && playoffAppLeaders[0].playoff_apps > 0) {
+    const formatted = playoffAppLeaders.map(r => ({ name: r.manager.team_name }));
+    const { holder, detail } = tiedHolderDetail(formatted, `${playoffAppLeaders[0].playoff_apps} appearance${playoffAppLeaders[0].playoff_apps === 1 ? '' : 's'}`);
+    trophies.push({ icon: '🎟️', name: 'Most Playoff Appearances', holder, detail });
+  }
+
+  // The Bridesmaid — most runner-up finishes for a manager who has NEVER
+  // actually won it all. Deliberately excludes anyone with a championship,
+  // even if they also have the most runner-up finishes overall — this
+  // trophy is specifically about the "always the runner-up, never the
+  // champion" pattern.
+  const bridesmaidCandidates = careerList.filter(r => r.championships === 0 && r.runner_ups > 0);
+  const bridesmaidLeaders = tiedLeaders(bridesmaidCandidates, r => r.runner_ups, 'max');
+  if (bridesmaidLeaders.length) {
+    const formatted = bridesmaidLeaders.map(r => ({ name: r.manager.team_name }));
+    const { holder, detail } = tiedHolderDetail(formatted, `${bridesmaidLeaders[0].runner_ups} runner-up finish${bridesmaidLeaders[0].runner_ups === 1 ? '' : 'es'}, 0 titles`);
+    trophies.push({ icon: '🥈', name: 'The Bridesmaid', holder, detail, danger: true });
+  } else {
+    trophies.push({ icon: '🥈', name: 'The Bridesmaid', unclaimed: true, detail: 'Every runner-up has also won a title' });
+  }
+
+  // Best Playoff Record — win% in real playoff bracket games specifically
+  // (computePlayoffRecords, sourced from winners_bracket w/l, not raw
+  // matchup scores — see that function's comment for why that matters).
+  const playoffRecords = computePlayoffRecords();
+  const playoffRecordList = Object.entries(playoffRecords)
+    .map(([rid, r]) => ({ rid: Number(rid), ...r }))
+    .filter(r => r.wins + r.losses > 0);
+  const bestPlayoffLeaders = tiedLeaders(playoffRecordList, r => r.wins / (r.wins + r.losses), 'max');
+  if (bestPlayoffLeaders.length) {
+    const formatted = bestPlayoffLeaders.map(r => ({ name: getManager(r.rid).team_name, qualifier: `${r.wins}-${r.losses}` }));
+    const { holder, detail } = tiedHolderDetail(formatted, `${pct(bestPlayoffLeaders[0].wins, bestPlayoffLeaders[0].losses)} in the playoffs`);
+    trophies.push({ icon: '🏅', name: 'Best Playoff Record', holder, detail });
+  } else {
+    trophies.push({ icon: '🏅', name: 'Best Playoff Record', unclaimed: true, detail: 'No playoff games on record yet' });
+  }
+
+  // Season-level records — only seasons whose regular season has actually
+  // finished (regularSeasonEnded), so the current in-progress season's
+  // small sample can't sneak into "most/fewest points in a season." Ties on
+  // win% (Best/Worst Single-Season Record) are ties on the real record
+  // itself — every season here has the same game count, so equal win% only
+  // ever happens with an identical W-L.
+  const finishedSeasons = SEASONS.filter(regularSeasonEnded);
+  const seasonEntries = [];
+  finishedSeasons.forEach(season => {
+    const standings = computeSeasonStandings(season);
+    Object.entries(standings).forEach(([rid, s]) => {
+      const games = s.wins + s.losses;
+      if (games === 0) return;
+      seasonEntries.push({ rid: Number(rid), season, ...s, winPct: s.wins / games });
+    });
+  });
+
+  const bestSeasonLeaders = tiedLeaders(seasonEntries, e => e.winPct, 'max');
+  if (bestSeasonLeaders.length) {
+    const b = bestSeasonLeaders[0];
+    const formatted = bestSeasonLeaders.map(e => ({ name: getManager(e.rid, e.season).team_name, qualifier: e.season }));
+    const { holder, detail } = tiedHolderDetail(formatted, `${b.wins}-${b.losses} (${pct(b.wins, b.losses)})`);
+    trophies.push({ icon: '📈', name: 'Best Single-Season Record', holder, detail });
+  }
+  const worstSeasonLeaders = tiedLeaders(seasonEntries, e => e.winPct, 'min');
+  if (worstSeasonLeaders.length) {
+    const w = worstSeasonLeaders[0];
+    const formatted = worstSeasonLeaders.map(e => ({ name: getManager(e.rid, e.season).team_name, qualifier: e.season }));
+    const { holder, detail } = tiedHolderDetail(formatted, `${w.wins}-${w.losses} (${pct(w.wins, w.losses)})`);
+    trophies.push({ icon: '📉', name: 'Worst Single-Season Record', holder, detail, danger: true });
+  }
+  const mostPointsLeaders = tiedLeaders(seasonEntries, e => e.pf, 'max');
+  if (mostPointsLeaders.length) {
+    const formatted = mostPointsLeaders.map(e => ({ name: getManager(e.rid, e.season).team_name, qualifier: e.season }));
+    const { holder, detail } = tiedHolderDetail(formatted, `${fmt(mostPointsLeaders[0].pf)} pts`);
+    trophies.push({ icon: '💰', name: 'Most Points in a Season', holder, detail });
+  }
+  const fewestPointsLeaders = tiedLeaders(seasonEntries, e => e.pf, 'min');
+  if (fewestPointsLeaders.length) {
+    const formatted = fewestPointsLeaders.map(e => ({ name: getManager(e.rid, e.season).team_name, qualifier: e.season }));
+    const { holder, detail } = tiedHolderDetail(formatted, `${fmt(fewestPointsLeaders[0].pf)} pts`);
+    trophies.push({ icon: '🪫', name: 'Fewest Points in a Season', holder, detail, danger: true });
+  }
+
+  // Undefeated Season — every qualifying (manager, season) is an equal
+  // co-holder, not a ranking, so every instance is shown, not just the
+  // first found. Rare enough that "unclaimed" is the expected state most
+  // of the time.
+  const undefeated = finishedSeasons.flatMap(season => {
+    const standings = computeSeasonStandings(season);
+    return Object.entries(standings)
+      .filter(([, s]) => s.losses === 0 && s.wins > 0)
+      .map(([rid, s]) => ({ rid: Number(rid), season, ...s }));
+  });
+  if (undefeated.length > 0) {
+    const formatted = undefeated.map(e => ({ name: getManager(e.rid, e.season).team_name, qualifier: e.season }));
+    const { holder, detail } = tiedHolderDetail(formatted, `${undefeated[0].wins}-0`);
+    trophies.push({ icon: '💯', name: 'Undefeated Season', holder, detail });
+  } else {
+    trophies.push({ icon: '💯', name: 'Undefeated Season', unclaimed: true, detail: 'Nobody has run the table yet' });
+  }
+
+  // Longest win/loss streaks, all-time
+  const streaks = computeAllTimeStreaks();
+  const streakEntries = Object.entries(streaks).map(([rid, s]) => ({ rid: Number(rid), ...s }));
+  const winStreakLeaders = tiedLeaders(streakEntries.filter(e => e.bestWin.count > 0), e => e.bestWin.count, 'max');
+  if (winStreakLeaders.length) {
+    const formatted = winStreakLeaders.map(e => ({ name: getManager(e.rid).team_name, qualifier: `through ${trophySeasonWeek(e.bestWin.endSeason, e.bestWin.endWeek)}` }));
+    const { holder, detail } = tiedHolderDetail(formatted, `${winStreakLeaders[0].bestWin.count} straight`);
+    trophies.push({ icon: '🔗', name: 'Longest Win Streak', holder, detail });
+  }
+  const lossStreakLeaders = tiedLeaders(streakEntries.filter(e => e.bestLoss.count > 0), e => e.bestLoss.count, 'max');
+  if (lossStreakLeaders.length) {
+    const formatted = lossStreakLeaders.map(e => ({ name: getManager(e.rid).team_name, qualifier: `through ${trophySeasonWeek(e.bestLoss.endSeason, e.bestLoss.endWeek)}` }));
+    const { holder, detail } = tiedHolderDetail(formatted, `${lossStreakLeaders[0].bestLoss.count} straight`);
+    trophies.push({ icon: '💔', name: 'Longest Losing Streak', holder, detail, danger: true });
+  }
+
+  // Most Trades in a Season (one manager, one season)
+  const tradesBySeasonRoster = {};
+  state.allTrades.forEach(t => {
+    (t.roster_ids || []).forEach(rid => {
+      const key = `${t.season}|${rid}`;
+      tradesBySeasonRoster[key] = (tradesBySeasonRoster[key] || 0) + 1;
+    });
+  });
+  const tradeSeasonEntries = Object.entries(tradesBySeasonRoster).map(([key, count]) => {
+    const [season, rid] = key.split('|');
+    return { rid: Number(rid), season, count };
+  });
+  const tradeLeaders = tiedLeaders(tradeSeasonEntries, e => e.count, 'max');
+  if (tradeLeaders.length) {
+    const formatted = tradeLeaders.map(e => ({ name: getManager(e.rid, e.season).team_name, qualifier: e.season }));
+    const { holder, detail } = tiedHolderDetail(formatted, `${tradeLeaders[0].count} trades`);
+    trophies.push({ icon: '🔁', name: 'Most Trades in a Season', holder, detail });
+  }
+
+  // Winningest Franchise — career win% across the whole league history.
+  // Two managers can share the same win% with different W-L (e.g. one
+  // joined a season late), so each tied leader carries their own record
+  // as the qualifier rather than assuming it's identical.
+  const winPctLeaders = tiedLeaders(careerList, r => r.wins / Math.max(1, r.wins + r.losses), 'max');
+  if (winPctLeaders.length) {
+    const formatted = winPctLeaders.map(r => ({ name: r.manager.team_name, qualifier: `${r.wins}-${r.losses}` }));
+    const { holder, detail } = tiedHolderDetail(formatted, `${pct(winPctLeaders[0].wins, winPctLeaders[0].losses)} win rate all-time`);
+    trophies.push({ icon: '🏛️', name: 'Winningest Franchise', holder, detail });
+  }
+
+  return trophies;
+}
+
+// One manager's personal trophy case — same tile shape as the league view,
+// scoped to a single roster_id.
+function buildTeamTrophies(ridRaw) {
+  const rid = Number(ridRaw);
+  const m = getManager(rid);
+  const trophies = [];
+
+  const careerRecords = computeCareerRecords();
+  const rec = careerRecords[rid] || { wins: 0, losses: 0, pf: 0, championships: 0, runner_ups: 0, playoff_apps: 0 };
+
+  trophies.push(rec.championships > 0
+    ? { icon: '🏆', name: 'Championships', holder: m.team_name, detail: `${rec.championships} title${rec.championships === 1 ? '' : 's'}` }
+    : { icon: '🏆', name: 'Championships', unclaimed: true, detail: 'None yet' });
+
+  trophies.push(rec.runner_ups > 0
+    ? { icon: '🥈', name: 'Runner-Up Finishes', holder: m.team_name, detail: `${rec.runner_ups} time${rec.runner_ups === 1 ? '' : 's'}` }
+    : { icon: '🥈', name: 'Runner-Up Finishes', unclaimed: true, detail: 'None yet' });
+
+  trophies.push({ icon: '🎟️', name: 'Playoff Appearances', holder: m.team_name, detail: `${rec.playoff_apps} appearance${rec.playoff_apps === 1 ? '' : 's'}` });
+
+  // Sourced from computePlayoffRecords() (real winners_bracket w/l, not
+  // raw matchup scores) — same reasoning as the league's Best Playoff
+  // Record trophy.
+  const playoffRec = computePlayoffRecords()[rid] || { wins: 0, losses: 0 };
+  trophies.push(playoffRec.wins + playoffRec.losses > 0
+    ? { icon: '🏅', name: 'Playoff Record', holder: m.team_name, detail: `${playoffRec.wins}-${playoffRec.losses} (${pct(playoffRec.wins, playoffRec.losses)})` }
+    : { icon: '🏅', name: 'Playoff Record', unclaimed: true, detail: 'No playoff games yet' });
+
+  trophies.push({ icon: '📊', name: 'Career Record', holder: m.team_name, detail: `${rec.wins}-${rec.losses} (${pct(rec.wins, rec.losses)})` });
+  trophies.push({ icon: '💰', name: 'Career Points For', holder: m.team_name, detail: `${fmt(rec.pf)} pts` });
+
+  // Personal best/worst single-week scores (regular season only — same
+  // playoff bye/placement-week data risk as the league's Highest/Lowest
+  // Score Ever trophy; see the regularSeasonGames comment in
+  // buildLeagueTrophies() and status.md part 9). 200-point week count is
+  // kept on the full history instead — the corrupted entries are always a
+  // non-placeholder LOW score, never an inflated one, so a real 200+ week
+  // is safe to count wherever it happened, playoffs included.
+  let best = null, worst = null, count200 = 0;
+  state.allMatchups.forEach(g => {
+    [[g.roster1, g.pts1], [g.roster2, g.pts2]].forEach(([r, pts]) => {
+      if (r !== rid) return;
+      if (!best || pts > best.pts) best = { pts, season: g.season, week: g.week };
+      if (!worst || pts < worst.pts) worst = { pts, season: g.season, week: g.week };
+    });
+  });
+  state.allMatchupsAll.forEach(g => {
+    [[g.roster1, g.pts1], [g.roster2, g.pts2]].forEach(([r, pts]) => {
+      if (r !== rid) return;
+      if (pts >= 200) count200++;
+    });
+  });
+  if (best) trophies.push({ icon: '🚀', name: 'Personal Best Week', holder: m.team_name, detail: `${fmt(best.pts)} pts · ${trophySeasonWeek(best.season, best.week)}` });
+  if (worst) trophies.push({ icon: '🥶', name: 'Personal Worst Week', holder: m.team_name, detail: `${fmt(worst.pts)} pts · ${trophySeasonWeek(worst.season, worst.week)}`, danger: true });
+  trophies.push(count200 > 0
+    ? { icon: '🎯', name: '200-Point Weeks', holder: m.team_name, detail: `${count200} time${count200 === 1 ? '' : 's'}` }
+    : { icon: '🎯', name: '200-Point Weeks', unclaimed: true, detail: 'Never hit 200' });
+
+  // Personal all-time win/loss streaks
+  const streaks = computeAllTimeStreaks()[rid] || { bestWin: { count: 0 }, bestLoss: { count: 0 } };
+  trophies.push(streaks.bestWin.count > 0
+    ? { icon: '🔗', name: 'Longest Win Streak', holder: m.team_name, detail: `${streaks.bestWin.count} straight · through ${trophySeasonWeek(streaks.bestWin.endSeason, streaks.bestWin.endWeek)}` }
+    : { icon: '🔗', name: 'Longest Win Streak', unclaimed: true, detail: '—' });
+  trophies.push(streaks.bestLoss.count > 0
+    ? { icon: '💔', name: 'Longest Losing Streak', holder: m.team_name, detail: `${streaks.bestLoss.count} straight · through ${trophySeasonWeek(streaks.bestLoss.endSeason, streaks.bestLoss.endWeek)}`, danger: true }
+    : { icon: '💔', name: 'Longest Losing Streak', unclaimed: true, detail: '—' });
+
+  // Best/worst single-season finish (finished seasons only, same rule as
+  // the league view)
+  const finishedSeasons = SEASONS.filter(regularSeasonEnded);
+  let bestSeason = null, worstSeason = null;
+  finishedSeasons.forEach(season => {
+    const s = computeSeasonStandings(season)[rid];
+    if (!s || (s.wins + s.losses) === 0) return;
+    const winPct = s.wins / (s.wins + s.losses);
+    const entry = { season, ...s, winPct };
+    if (!bestSeason || winPct > bestSeason.winPct) bestSeason = entry;
+    if (!worstSeason || winPct < worstSeason.winPct) worstSeason = entry;
+  });
+  if (bestSeason) trophies.push({ icon: '📈', name: 'Best Season', holder: m.team_name, detail: `${bestSeason.wins}-${bestSeason.losses} · ${bestSeason.season}` });
+  if (worstSeason) trophies.push({ icon: '📉', name: 'Worst Season', holder: m.team_name, detail: `${worstSeason.wins}-${worstSeason.losses} · ${worstSeason.season}`, danger: true });
+
+  // Trades made + net career trade value (grading-eligible trades only,
+  // same locked/pending exclusion the Trades page uses)
+  const tradesMade = state.allTrades.filter(t => (t.roster_ids || []).includes(rid)).length;
+  trophies.push(tradesMade > 0
+    ? { icon: '🔁', name: 'Trades Made', holder: m.team_name, detail: `${tradesMade} career trade${tradesMade === 1 ? '' : 's'}` }
+    : { icon: '🔁', name: 'Trades Made', unclaimed: true, detail: 'Never made a trade' });
+
+  const grades = getAllTradeGrades().filter(g => !g.locked && !g.pending);
+  let netValue = 0, gradedCount = 0;
+  grades.forEach(g => {
+    if (g.rid1 === rid) { netValue += (g.total1 - g.total2); gradedCount++; }
+    else if (g.rid2 === rid) { netValue += (g.total2 - g.total1); gradedCount++; }
+  });
+  if (gradedCount > 0) {
+    trophies.push({
+      icon: netValue >= 0 ? '🎩' : '😩', name: 'Career Trade Value', holder: m.team_name,
+      detail: `${netValue >= 0 ? '+' : ''}${fmt(netValue)} pts across ${gradedCount} graded trade${gradedCount === 1 ? '' : 's'}`,
+      danger: netValue < 0,
+    });
+  }
+
+  return trophies;
+}
+
+function trophyTileHtml(t) {
+  const classes = ['trophy-tile', t.unclaimed && 'unclaimed', t.danger && !t.unclaimed && 'danger'].filter(Boolean).join(' ');
+  const holderLine = t.unclaimed ? 'Unclaimed' : t.holder;
+  return `
+    <div class="${classes}">
+      <div class="trophy-icon">${t.icon}</div>
+      <div class="trophy-name">${t.name}</div>
+      <div class="trophy-holder">${holderLine}</div>
+      <div class="trophy-detail">${t.detail}</div>
+    </div>`;
+}
+
+function populateTrophyCaseSelector() {
+  const sel = document.getElementById('trophy-case-selector');
+  if (!sel || sel.options.length > 1) return;
+  getAllManagers()
+    .slice()
+    .sort((a, b) => a.team_name.localeCompare(b.team_name))
+    .forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m.roster_id;
+      opt.textContent = m.team_name;
+      sel.appendChild(opt);
+    });
+}
+
+function renderTrophyCase() {
+  const body = document.getElementById('trophy-case-body');
+  if (!body) return;
+  const sel = document.getElementById('trophy-case-selector');
+  const value = sel ? sel.value : 'league';
+
+  const trophies = value === 'league' ? buildLeagueTrophies() : buildTeamTrophies(value);
+
+  body.innerHTML = trophies.length
+    ? `<div class="trophy-grid">${trophies.map(trophyTileHtml).join('')}</div>`
+    : '<div class="empty"><div class="empty-icon">🏆</div><p>No historical data loaded yet</p></div>';
 }
 
 function renderSeasonBlocks() {
