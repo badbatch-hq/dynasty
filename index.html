@@ -950,6 +950,13 @@
     font-size: 13px;
   }
 
+  /* Per-option "who voted for this" line, non-anonymous polls only. */
+  .poll-option-voters {
+    font-size: 11px;
+    color: var(--muted);
+    margin: 2px 0 6px 2px;
+  }
+
   .poll-history-toggle.active {
     color: var(--accent);
     border-color: var(--accent);
@@ -1387,7 +1394,7 @@
     </div>
 
     <!-- Standings -->
-    <div class="card fade-up">
+    <div class="card fade-up" style="margin-bottom:24px;">
       <div class="card-title">Current Standings</div>
       <div class="table-wrap">
         <table>
@@ -4981,6 +4988,57 @@ function getAnonVoterId() {
   return id;
 }
 
+// Tracks which polls THIS BROWSER has voted on at all, independent of which
+// name happens to be selected in "Voting as" right now. Needed because the
+// results-visibility gate below used to key off whichever name was currently
+// picked — so voting as Alice, then switching the dropdown to Bob to vote for
+// him too, would re-hide results the instant Bob (who hasn't voted yet from
+// this browser's perspective) became the selected name, only to reappear once
+// Bob's vote went in. Voting for multiple people from one shared device is a
+// normal way this honor-system app gets used, so the unlock has to persist
+// per-poll, not per-currently-selected-name.
+const VOTED_POLLS_KEY = 'dynastyhq_voted_polls';
+function getVotedPollIds() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(VOTED_POLLS_KEY) || '[]'));
+  } catch (e) {
+    return new Set();
+  }
+}
+function markPollVoted(pollId) {
+  try {
+    const ids = getVotedPollIds();
+    ids.add(pollId);
+    localStorage.setItem(VOTED_POLLS_KEY, JSON.stringify([...ids]));
+  } catch (e) { /* localStorage unavailable — non-fatal, just no persistence */ }
+}
+function unmarkPollVoted(pollId) {
+  try {
+    const ids = getVotedPollIds();
+    ids.delete(pollId);
+    localStorage.setItem(VOTED_POLLS_KEY, JSON.stringify([...ids]));
+  } catch (e) { /* non-fatal */ }
+}
+
+// Feeds the "what's new" banner (see checkForNewPollBanner / initWhatsNewBanner
+// below) — tracks which open polls this browser has already been told about,
+// independent of whether it's actually voted on them yet.
+const SEEN_POLLS_KEY = 'dynastyhq_seen_polls';
+function getSeenPollIds() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(SEEN_POLLS_KEY) || '[]'));
+  } catch (e) {
+    return new Set();
+  }
+}
+function markPollsSeen(ids) {
+  try {
+    const seen = getSeenPollIds();
+    ids.forEach(id => seen.add(id));
+    localStorage.setItem(SEEN_POLLS_KEY, JSON.stringify([...seen]));
+  } catch (e) { /* non-fatal */ }
+}
+
 function renderPolls() {
   populatePollVoterPicker();
   populatePollCreatorPicker();
@@ -5047,6 +5105,8 @@ function populatePollCreatorPicker() {
   populateNamePicker('#poll-creator-name', POLL_CREATOR_KEY, 'Posting as...', null);
 }
 
+let _newPollBannerChecked = false;
+
 async function refreshPolls() {
   try {
     const resp = await fetch(`${PROPHECY_CONFIG.APPS_SCRIPT_URL}?action=polls`);
@@ -5059,6 +5119,14 @@ async function refreshPolls() {
     console.warn('Failed to load polls:', e);
   }
   renderPollCards();
+
+  // Only on the very first poll fetch of this page load — not on later
+  // refreshes triggered by voting or posting a poll — so this reads as "new
+  // since your last visit," not "new since your last click."
+  if (!_newPollBannerChecked) {
+    _newPollBannerChecked = true;
+    checkForNewPollBanner();
+  }
 }
 
 function tallyPoll(poll) {
@@ -5113,6 +5181,21 @@ function renderPollCards() {
     const myVoteKey = poll.anonymousVoting ? getAnonVoterId() : voterName;
     const myVote = myVoteKey ? _allPollVotes.find(v => v.pollId === poll.pollId && v.voterName === myVoteKey) : null;
 
+    // Results (bars/pct/counts/who-voted) stay hidden on an OPEN poll until
+    // this browser has cast a vote — a display nudge to vote first, not real
+    // access control (the full tally is already sitting in _allPollVotes
+    // client-side either way). Closed/History polls always show full results
+    // — nothing left to bias by seeing them.
+    //
+    // Gated on getVotedPollIds() (this browser's own record of which polls
+    // it's voted on, any name) rather than only `myVote` (whichever name is
+    // CURRENTLY selected in "Voting as") — otherwise switching that dropdown
+    // to vote for a second person re-hides results the instant you pick a
+    // name that hasn't voted yet, which looked like results randomly
+    // "disappearing." `myVote` is kept as a fallback for a vote cast before
+    // this tracking existed.
+    const resultsVisible = closed || getVotedPollIds().has(poll.pollId) || !!myVote;
+
     // Winner highlighting only applies to closed polls (i.e. the history
     // view) and only once at least one vote's been cast. Tie-aware — every
     // option tied for the most votes gets highlighted, not just the first
@@ -5123,6 +5206,23 @@ function renderPollCards() {
       const pct = total > 0 ? Math.round((counts[opt] / total) * 100) : 0;
       const isMine = myVote && myVote.option === opt;
       const isWinner = closed && total > 0 && counts[opt] === maxCount;
+
+      if (!resultsVisible) {
+        return `
+          <button type="button" class="poll-option" data-poll-id="${escapeAttr(poll.pollId)}" data-option="${escapeAttr(opt)}">
+            <span class="poll-option-label">
+              <span>${escapeHtml(opt)}</span>
+            </span>
+          </button>`;
+      }
+
+      // Non-anonymous polls only — an anonymous poll's real votes are keyed
+      // by a random per-browser id, never a real name, so there's no name to
+      // show here without breaking the anonymity the poll promised.
+      const voters = !poll.anonymousVoting
+        ? _allPollVotes.filter(v => v.pollId === poll.pollId && v.option === opt).map(v => v.voterName)
+        : [];
+
       return `
         <button type="button" class="poll-option${isWinner ? ' poll-option-winner' : ''}" data-poll-id="${escapeAttr(poll.pollId)}" data-option="${escapeAttr(opt)}" ${closed ? 'disabled' : ''}>
           <span class="poll-option-bar" style="width:${pct}%;"></span>
@@ -5130,7 +5230,8 @@ function renderPollCards() {
             <span>${isWinner ? '🏆 ' : ''}${isMine ? '✓ ' : ''}${escapeHtml(opt)}</span>
             <span>${pct}% (${counts[opt]})</span>
           </span>
-        </button>`;
+        </button>
+        ${voters.length ? `<div class="poll-option-voters">${voters.map(escapeHtml).join(', ')}</div>` : ''}`;
     }).join('');
 
     const metaParts = [];
@@ -5142,14 +5243,18 @@ function renderPollCards() {
       metaParts.push('No expiration');
     }
     if (poll.createdBy) metaParts.push(`Posted by ${escapeHtml(poll.createdBy)}`);
-    if (poll.anonymousVoting) metaParts.push('Anonymous voting');
+    if (poll.anonymousVoting) metaParts.push('Anonymous voting — choice hidden, name required to vote');
+
+    const footerLine = resultsVisible
+      ? `${total} vote${total === 1 ? '' : 's'}`
+      : 'Vote to see results';
 
     return `
       <div class="poll-card">
         <div class="poll-question">${escapeHtml(poll.question)}${closed ? ' <span class="poll-closed-tag">Closed</span>' : ''}</div>
         ${metaParts.length ? `<div class="poll-meta">${metaParts.map(m => `<span>${m}</span>`).join('')}</div>` : ''}
         ${options}
-        <div style="font-size:11px;color:var(--muted);margin-top:4px;">${total} vote${total === 1 ? '' : 's'}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px;">${footerLine}</div>
       </div>`;
   }).join('');
 
@@ -5163,11 +5268,22 @@ function renderPollCards() {
 async function handlePollVote(pollId, option) {
   const poll = _allPolls.find(p => p.pollId === pollId);
   let voterName;
+  let participantName;
   if (poll && poll.anonymousVoting) {
-    // No name is ever picked or sent for an anonymous-voting poll — this
-    // browser's own random id is the only thing used to let it recognize/
-    // change its own vote later.
+    // The vote itself still goes through under this browser's own random id
+    // — never a real name — so the choice stays anonymous even from Joe
+    // reading the raw sheet. A real name is now also required (same "pick
+    // your name" prompt as a non-anonymous poll) purely so a separate,
+    // choice-free participation record can be kept (see Code.gs
+    // PollParticipants) — "anonymous" means your choice is hidden, not that
+    // you voted at all.
     voterName = getAnonVoterId();
+    const select = document.querySelector('#poll-voter-name');
+    participantName = select?.value;
+    if (!participantName) {
+      alert('Pick your name from the "Voting as" dropdown first.');
+      return;
+    }
   } else {
     const select = document.querySelector('#poll-voter-name');
     voterName = select?.value;
@@ -5181,19 +5297,22 @@ async function handlePollVote(pollId, option) {
   // server — which is the real gatekeeper on closed polls, in case this
   // browser's copy of _allPolls is stale.
   const previousVotes = _allPollVotes;
+  const alreadyUnlocked = getVotedPollIds().has(pollId);
   _allPollVotes = _allPollVotes.filter(v => !(v.pollId === pollId && v.voterName === voterName));
   _allPollVotes.push({ pollId, voterName, option, timestamp: new Date().toISOString() });
+  markPollVoted(pollId);
   renderPollCards();
 
   // Same "no explicit Content-Type" CORS trick used by Prophecies submissions.
   try {
     const resp = await fetch(PROPHECY_CONFIG.APPS_SCRIPT_URL, {
       method: 'POST',
-      body: JSON.stringify({ action: 'vote', pollId, voterName, option }),
+      body: JSON.stringify({ action: 'vote', pollId, voterName, option, participantName }),
     });
     const data = await resp.json();
     if (!data.ok) {
       _allPollVotes = previousVotes;
+      if (!alreadyUnlocked) unmarkPollVoted(pollId);
       alert(data.error || 'Vote failed to save.');
       renderPollCards();
       return;
@@ -5294,7 +5413,10 @@ function renderChangelog() {
 }
 
 // One-time "what's new" banner — shown once per build bump, dismissible,
-// links straight into the (nav-less) Changelog tab.
+// links straight into the (nav-less) Changelog tab. Buttons use .onclick
+// (not addEventListener) so a later call — see checkForNewPollBanner, which
+// can repurpose this same banner for a new-poll callout — cleanly replaces
+// this handler instead of both firing.
 function initWhatsNewBanner() {
   const seen = localStorage.getItem('dynastyhq_seen_version');
   if (seen === CURRENT_BUILD_VERSION) return;
@@ -5303,15 +5425,49 @@ function initWhatsNewBanner() {
   if (!banner) return;
   banner.style.display = 'flex';
 
-  document.querySelector('#whats-new-view').addEventListener('click', () => {
+  document.querySelector('#whats-new-view').onclick = () => {
     localStorage.setItem('dynastyhq_seen_version', CURRENT_BUILD_VERSION);
     banner.style.display = 'none';
     showPage('changelog');
-  });
-  document.querySelector('#whats-new-dismiss').addEventListener('click', () => {
+  };
+  document.querySelector('#whats-new-dismiss').onclick = () => {
     localStorage.setItem('dynastyhq_seen_version', CURRENT_BUILD_VERSION);
     banner.style.display = 'none';
-  });
+  };
+}
+
+// Repurposes the same "what's new" banner to call out a poll this browser
+// hasn't been told about yet, on a fresh load (see refreshPolls). Takes
+// priority over the build-version banner above when both would otherwise
+// fire in the same visit — a new poll is timelier and actionable, the
+// version bump will still be there next load.
+function checkForNewPollBanner() {
+  const openPolls = _allPolls.filter(p => !isPollClosed(p));
+  const seen = getSeenPollIds();
+  const newPoll = openPolls.find(p => !seen.has(p.pollId));
+  if (!newPoll) return;
+
+  const banner = document.querySelector('#whats-new-banner');
+  if (!banner) return;
+
+  banner.querySelector('.robber-baron-icon').textContent = '🗳️';
+  banner.querySelector('.robber-baron-title').textContent = 'New Poll';
+  banner.querySelector('.robber-baron-sub').textContent = `"${newPoll.question}"`;
+  const viewBtn = document.querySelector('#whats-new-view');
+  const dismissBtn = document.querySelector('#whats-new-dismiss');
+  viewBtn.textContent = 'Vote now';
+
+  const dismiss = () => {
+    markPollsSeen(openPolls.map(p => p.pollId));
+    banner.style.display = 'none';
+  };
+  viewBtn.onclick = () => {
+    dismiss();
+    document.querySelector('#dash-polls')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  dismissBtn.onclick = dismiss;
+
+  banner.style.display = 'flex';
 }
 
 // ============================================================

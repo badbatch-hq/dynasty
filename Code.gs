@@ -32,6 +32,7 @@ const CONFIG = {
   ARCHIVE_SHEET_NAME: 'Prophecies Archive',
   POLLS_SHEET_NAME: 'Polls',
   POLL_VOTES_SHEET_NAME: 'PollVotes',
+  POLL_PARTICIPANTS_SHEET_NAME: 'PollParticipants',
 
   // Playoff bracket size — used to decide which roster_ids get a real placement
   // vs. get ranked by regular-season record for "finishes top N" predictions
@@ -53,6 +54,20 @@ const HEADERS = [
 // an early manual close — no in-app button for that by design.
 const POLL_HEADERS = ['pollId', 'question', 'options', 'active', 'createdAt', 'closesAt', 'createdBy', 'anonymousVoting'];
 const POLL_VOTE_HEADERS = ['pollId', 'voterName', 'option', 'timestamp'];
+// A real name, no option — deliberately separate from PollVotes so that even
+// reading the raw sheet can't match a name to a choice on an anonymous poll.
+// Only written for anonymous-voting polls (a named poll's real votes already
+// carry a real name directly); see submitPollVote() below. Sheet-only —
+// nothing in index.html ever fetches or renders this data.
+//
+// Deliberately NO timestamp column, and rows are kept sorted alphabetically
+// by name rather than in the order people voted (see submitPollVote()) — an
+// insertion-order or timestamp field here would let someone line this sheet
+// up against PollVotes' own timestamps/row order and infer which anonymous
+// vote belongs to which real name purely from *when* each was recorded, even
+// though the two sheets share no other key. Sorting/dropping the timestamp
+// closes that side channel.
+const POLL_PARTICIPANT_HEADERS = ['pollId', 'voterName'];
 
 // ---------- HTTP entry points ----------
 
@@ -212,6 +227,12 @@ function submitPrediction(body) {
 // your vote overwrites your existing row instead of piling up duplicates.
 // Tallying happens client-side in index.html from the raw vote rows, same as
 // how the Prophecies hit-rate stats are computed.
+//
+// "PollParticipants" is a separate, sheet-only record of real names that have
+// voted on an anonymous-voting poll — no option column, no shared key with
+// the actual (anonymous-id-keyed) PollVotes row for that same vote. It exists
+// purely so Joe can tell who's voted on an anonymous poll without index.html
+// (or Joe reading the raw sheet) ever being able to tie a name to a choice.
 
 function getPollsSheet() {
   return getOrCreateSheet(CONFIG.POLLS_SHEET_NAME, POLL_HEADERS);
@@ -219,6 +240,10 @@ function getPollsSheet() {
 
 function getPollVotesSheet() {
   return getOrCreateSheet(CONFIG.POLL_VOTES_SHEET_NAME, POLL_VOTE_HEADERS);
+}
+
+function getPollParticipantsSheet() {
+  return getOrCreateSheet(CONFIG.POLL_PARTICIPANTS_SHEET_NAME, POLL_PARTICIPANT_HEADERS);
 }
 
 // Polls sheet columns: pollId, question, options (comma-separated), active
@@ -312,6 +337,30 @@ function findPollRowIndex(sheet, pollId) {
   return -1;
 }
 
+function getAllPollParticipants() {
+  const sheet = getPollParticipantsSheet();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+  const values = sheet.getRange(2, 1, lastRow - 1, POLL_PARTICIPANT_HEADERS.length).getValues();
+  return values
+    .map(row => {
+      const obj = {};
+      POLL_PARTICIPANT_HEADERS.forEach((h, i) => { obj[h] = row[i]; });
+      return obj;
+    })
+    .filter(p => p.pollId && p.voterName);
+}
+
+function findParticipantRowIndex(sheet, pollId, voterName) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return -1;
+  const rows = sheet.getRange(2, 1, lastRow - 1, 2).getValues(); // pollId, voterName
+  for (let i = 0; i < rows.length; i++) {
+    if (rows[i][0] === pollId && rows[i][1] === voterName) return i + 2;
+  }
+  return -1;
+}
+
 // Number of teams in the current-season league — the "everyone's voted"
 // threshold for auto-closing a poll at full participation. Pulled live from
 // Sleeper rather than a hardcoded 12, so it stays correct if the league ever
@@ -349,20 +398,67 @@ function submitPollVote(body) {
     sheet.getRange(rowIndex, 1, 1, POLL_VOTE_HEADERS.length).setValues([row]);
   }
 
-  // Auto-close once every manager has voted. Only a brand-new voter can push
-  // the vote count up (changing an existing vote overwrites a row rather than
-  // adding one), so this only ever needs checking on that path. This counts
-  // raw vote rows, not confirmed real managers — an anonymous-voting poll's
-  // rows are per-browser ids rather than real names, so "12 votes" and "12
-  // managers" aren't strictly guaranteed to be the same 12 people there, same
-  // honor-system caveat as the rest of Polls/Prophecies. Wrapped in try/catch
-  // so a hiccup fetching the roster count (a transient Sleeper API error)
-  // never breaks the vote itself — worst case, the poll just waits for
-  // closesAt or a manual close instead of closing this instant.
-  if (isNewVoter) {
+  // For an anonymous-voting poll, also record (separately, in PollParticipants)
+  // that this real name has participated — never in the same row as their
+  // choice, never joinable back to it. `voterName` above stays the random
+  // per-browser id for the actual vote; `participantName` here is the real
+  // "Voting as" name index.html now also collects for an anonymous poll
+  // specifically so this can exist. Sheet-only bookkeeping for Joe — nothing
+  // in the app ever reads this back. Wrapped so a hiccup here can never
+  // block the vote itself, same defensive pattern as the auto-close check
+  // below.
+  //
+  // No timestamp is stored, and a newly-added row is immediately re-sorted
+  // alphabetically by name rather than left in the order votes arrived —
+  // both writes (this one and the PollVotes upsert above) happen in the same
+  // request, so if this sheet were left in append order, its row-for-row
+  // timing would line up with PollVotes' own append order/timestamps closely
+  // enough to "math out" which real name cast which anonymous vote, even
+  // though the two rows share no key. Sorting by name (not append order)
+  // severs that.
+  let isNewParticipant = false;
+  if (poll.anonymousVoting && body.participantName) {
     try {
-      const voteCount = getAllPollVotes().filter(v => v.pollId === body.pollId).length;
-      if (voteCount >= getLeagueSize()) {
+      const pSheet = getPollParticipantsSheet();
+      const pRowIndex = findParticipantRowIndex(pSheet, body.pollId, body.participantName);
+      isNewParticipant = pRowIndex === -1;
+      const pRow = [body.pollId, body.participantName];
+      if (isNewParticipant) {
+        pSheet.appendRow(pRow);
+        const pLastRow = pSheet.getLastRow();
+        if (pLastRow > 2) {
+          pSheet.getRange(2, 1, pLastRow - 1, POLL_PARTICIPANT_HEADERS.length)
+            .sort([{ column: 1, ascending: true }, { column: 2, ascending: true }]);
+        }
+      } else {
+        pSheet.getRange(pRowIndex, 1, 1, POLL_PARTICIPANT_HEADERS.length).setValues([pRow]);
+      }
+    } catch (e) {
+      // Non-fatal — the vote itself already saved above.
+    }
+  }
+
+  // Auto-close once every manager has voted. For a named poll, a brand-new
+  // voter row (isNewVoter) is the only thing that can push the count up —
+  // changing an existing vote overwrites a row rather than adding one. For
+  // an anonymous poll, count real participants instead of raw anon-id vote
+  // rows now that PollParticipants exists — a manager voting from a second
+  // browser/device only ever gets counted once there, since it's keyed by
+  // their real name rather than a fresh random id each time. Falls back to
+  // counting raw vote rows if no participantName came through at all (e.g.
+  // a client that hasn't picked up this change yet) so closing still works,
+  // just with the older, less precise signal. Wrapped in try/catch so a
+  // hiccup fetching the roster count (a transient Sleeper API error) never
+  // breaks the vote itself — worst case, the poll just waits for closesAt or
+  // a manual close instead of closing this instant.
+  const usingParticipantCount = poll.anonymousVoting && !!body.participantName;
+  const shouldCheckClose = usingParticipantCount ? isNewParticipant : isNewVoter;
+  if (shouldCheckClose) {
+    try {
+      const count = usingParticipantCount
+        ? getAllPollParticipants().filter(p => p.pollId === body.pollId).length
+        : getAllPollVotes().filter(v => v.pollId === body.pollId).length;
+      if (count >= getLeagueSize()) {
         const pollsSheet = getPollsSheet();
         const pollRow = findPollRowIndex(pollsSheet, body.pollId);
         if (pollRow !== -1) {
