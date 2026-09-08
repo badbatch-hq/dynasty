@@ -1228,6 +1228,142 @@
     background: rgba(200,168,75,0.35);
   }
 
+  /* MATCHUP PICK'EM (Dashboard, above Polls) — weekly straight-up winner
+     picks + a season accuracy leaderboard. See claude/matchup-pickem-plan.md. */
+  .pickem-meta {
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 14px;
+  }
+
+  .pickem-matchup-card {
+    margin-bottom: 14px;
+  }
+
+  .pickem-matchup-teams {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .pickem-team-btn {
+    position: relative;
+    overflow: hidden;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    color: var(--text);
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    transition: border-color 0.15s, transform 0.1s;
+  }
+
+  .pickem-team-btn:hover { border-color: var(--accent); }
+  .pickem-team-btn:active:not(:disabled) { transform: scale(0.995); }
+  .pickem-team-btn:disabled { cursor: default; opacity: 0.85; }
+
+  .pickem-team-bar {
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    background: rgba(200,168,75,0.15);
+    z-index: 0;
+    transition: width 0.2s;
+  }
+
+  .pickem-team-name { position: relative; z-index: 1; font-weight: 600; }
+  .pickem-team-pct { position: relative; z-index: 1; font-size: 11px; color: var(--muted); }
+
+  .pickem-team-btn.pickem-mine { border-color: var(--accent); background: rgba(200,168,75,0.1); }
+
+  .pickem-empty { color: var(--muted); font-size: 13px; }
+
+  /* Podium leaderboard — top 3 shown 2nd/1st/3rd left-to-right (1st raised
+     in the center), gold/silver/bronze tile accents. Full rankings stay
+     behind a subtle text toggle rather than a prominent control — this is
+     meant to read as a highlight reel by default, not a dense table. */
+  .pickem-podium {
+    display: grid;
+    grid-template-columns: 1fr 1.15fr 1fr;
+    align-items: end;
+    gap: 10px;
+    margin: 4px 0 14px;
+  }
+
+  .pickem-podium-tile {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 10px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+  }
+
+  .pickem-podium-tile.rank-1 {
+    padding: 20px 12px;
+    transform: translateY(-8px);
+    border-color: rgba(200,168,75,0.5);
+    background: rgba(200,168,75,0.08);
+    box-shadow: 0 0 0 1px rgba(200,168,75,0.15);
+  }
+
+  .pickem-podium-tile.rank-2 {
+    border-color: rgba(180,186,196,0.5);
+    background: rgba(180,186,196,0.07);
+  }
+
+  .pickem-podium-tile.rank-3 {
+    border-color: rgba(193,122,74,0.5);
+    background: rgba(193,122,74,0.08);
+  }
+
+  .pickem-podium-medal { font-size: 20px; }
+  .pickem-podium-tile.rank-1 .pickem-podium-medal { font-size: 26px; }
+
+  .pickem-podium-name { font-weight: 600; font-size: 13px; }
+  .pickem-podium-tile.rank-1 .pickem-podium-name { font-size: 15px; }
+
+  .pickem-podium-pct {
+    font-family: 'DM Mono', monospace;
+    color: var(--accent);
+    font-size: 15px;
+  }
+  .pickem-podium-tile.rank-1 .pickem-podium-pct { font-size: 19px; }
+
+  .pickem-podium-record { font-size: 10px; color: var(--muted); }
+
+  .pickem-full-rankings-toggle {
+    font-size: 11px;
+    color: var(--muted);
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .pickem-full-rankings-toggle:hover { color: var(--accent); }
+
+  .pickem-full-rankings-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 12px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .pickem-full-rankings-row:last-child { border-bottom: none; }
+
   /* ANNOUNCEMENTS + CHANGELOG */
   .announcement-item,
   .changelog-item {
@@ -1696,6 +1832,29 @@
             <tr><td colspan="8" style="text-align:center;color:var(--muted);padding:32px;">Loading standings...</td></tr>
           </tbody>
         </table>
+      </div>
+    </div>
+
+    <!-- Weekly Matchup Pick'em — above Polls per Joe. See
+         claude/matchup-pickem-plan.md. Hidden entirely (see renderPickemMatchups)
+         during the offseason or once the regular season ends. -->
+    <div class="card fade-up" style="margin-bottom:24px;display:none;" id="pickem-card">
+      <div class="card-title">Matchup Pick'em</div>
+      <div id="pickem-leaderboard">
+        <p class="pickem-empty">Loading leaderboard...</p>
+      </div>
+
+      <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);">
+        <div class="poll-voter-row">
+          <label class="field-label" style="margin:0;">Picking as</label>
+          <select id="pickem-picker-name" style="width:auto;">
+            <option value="">Picking as...</option>
+          </select>
+        </div>
+        <div id="pickem-meta"></div>
+        <div id="pickem-matchups">
+          <p class="pickem-empty">Loading this week's matchups...</p>
+        </div>
       </div>
     </div>
 
@@ -3149,6 +3308,7 @@ function renderDashboard() {
   // couple of early `return`s (offseason branch, no-data branch) that must
   // never gate these.
   renderChangelogPreview();
+  renderPickem();
   renderPolls();
   loadLeagueNews();
 
@@ -3177,7 +3337,7 @@ function renderDashboard() {
 
   if (isOffseason) {
     document.getElementById('dash-season-info').textContent =
-      `${currentSeason} Season · Offseason · Final 2025 standings shown`;
+      `${currentSeason} Season · Offseason · Final ${displaySeason} standings shown`;
   } else {
     document.getElementById('dash-season-info').textContent =
       `${currentSeason} Season · Week ${lastWeek} · ${(state.league.settings?.playoff_week_start || 15) - 1}-week regular season`;
@@ -5658,6 +5818,376 @@ async function handlePollCreate(e) {
     alert('Failed to post poll — try again.');
   } finally {
     submitBtn.disabled = false;
+  }
+}
+
+// ============================================================
+// MATCHUP PICK'EM — weekly straight-up winner picks + a season accuracy
+// leaderboard. Talks to the same Apps Script deployment as Polls/Prophecies
+// (action=matchuppicks / action=submitpick). See claude/matchup-pickem-plan.md
+// for the full design.
+//
+// Scoped to the current season's next undecided REGULAR-SEASON week only —
+// playoff weeks aren't uniform (byes, placement games), same reasoning the
+// Trophy Case's single-game records use to stay regular-season-only. Once
+// that week is decided (its matchups show up in state.allMatchups), the
+// leaderboard folds it in and the pick cards move on to the following week.
+//
+// Picks lock at a single week-wide time rather than per-matchup real
+// kickoffs — Sleeper's API has no real per-game kickoff data (confirmed
+// while building League News' NFL_SCHEDULE). Thursday 5:00pm Pacific
+// normally, Wednesday 5:00pm Pacific for weeks 1 and 12 (this league's
+// schedule has an early Wednesday game those weeks). See
+// computePickemLockTimestamp() below.
+// ============================================================
+
+const PICKEM_PICKER_KEY = 'dynastyhq_pickem_picker_name';
+
+let _matchupPicksLoaded = false;
+let _allMatchupPicks = [];
+let _pickemFullRankings = false;
+
+function matchupKeyFor(rosterA, rosterB) {
+  return [Number(rosterA), Number(rosterB)].sort((a, b) => a - b).join('_');
+}
+
+// Converts a Y-M-D + hour:minute *in a specific IANA timezone* into a real
+// UTC Date — handles daylight saving automatically. Near-identical copy of
+// this and computePickemLockTimestamp() lives in Code.gs for server-side
+// lock validation; kept in sync by hand since the two files don't share code.
+function zonedTimeToUtc(year, month, day, hour, minute, timeZone) {
+  const asUTC = Date.UTC(year, month, day, hour, minute);
+  const d = new Date(asUTC);
+  // Format the same instant both as the target zone's wall clock and as UTC's
+  // wall clock, then parse both strings back — since both parses happen in
+  // whatever timezone this JS engine's *host* is running in, that host
+  // timezone cancels out of the subtraction. (The previous version compared
+  // a real Date instant against a string re-parsed in the host timezone,
+  // which only happened to work when the host's timezone was UTC — broke
+  // silently in any browser running in America/Los_Angeles itself, since
+  // target-zone-equals-host-zone made the "fix" a no-op.)
+  const tzString = d.toLocaleString('en-US', { timeZone });
+  const utcString = d.toLocaleString('en-US', { timeZone: 'UTC' });
+  const diff = new Date(utcString).getTime() - new Date(tzString).getTime();
+  return new Date(asUTC + diff);
+}
+
+// See the file-header comment above for the Thu/Wed 5pm Pacific rule.
+// Deliberately NOT anchored to a real season-start date (not reliably
+// available from Sleeper either) — instead finds the Tuesday of the CURRENT
+// real calendar week (the NFL's standard week-turnover day) and adds 1 or 2
+// days. Only needs to be correct while a given week's picks are actually
+// open, which is always true whenever this is called for "this week."
+function computePickemLockTimestamp(week) {
+  const now = new Date();
+  const zone = 'America/Los_Angeles';
+  const dowMap = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  const dow = dowMap[now.toLocaleString('en-US', { timeZone: zone, weekday: 'short' })];
+  const daysSinceTuesday = (dow - 2 + 7) % 7;
+
+  const y = Number(now.toLocaleString('en-US', { timeZone: zone, year: 'numeric' }));
+  const m = Number(now.toLocaleString('en-US', { timeZone: zone, month: 'numeric' })) - 1;
+  const d = Number(now.toLocaleString('en-US', { timeZone: zone, day: 'numeric' }));
+
+  const tuesday = zonedTimeToUtc(y, m, d, 0, 0, zone);
+  tuesday.setUTCDate(tuesday.getUTCDate() - daysSinceTuesday);
+
+  const lockDayOffset = (week === 1 || week === 12) ? 1 : 2; // Wed vs Thu
+  const lockDate = new Date(tuesday.getTime());
+  lockDate.setUTCDate(lockDate.getUTCDate() + lockDayOffset);
+
+  return zonedTimeToUtc(lockDate.getUTCFullYear(), lockDate.getUTCMonth(), lockDate.getUTCDate(), 17, 0, zone);
+}
+
+function populatePickemPickerPicker() {
+  populateNamePicker('#pickem-picker-name', PICKEM_PICKER_KEY, 'Picking as...', renderPickemMatchups);
+}
+
+// This season's next regular-season week that doesn't have final scores yet
+// — i.e. the week Pick'em cards should show right now. Returns null (hide
+// the whole card) once past the regular season, during the offseason, or
+// before any matchup data exists yet for that week.
+function getPickemWeekInfo() {
+  const currentSeason = state.league?.season || KNOWN_LATEST_SEASON;
+  const sd = state.seasonData[currentSeason];
+  if (!sd || !state.league) return null;
+
+  const playoffWeekStart = state.league.settings?.playoff_week_start || 15;
+  const pickWeek = (state.league.settings?.last_scored_leg || 0) + 1;
+  if (pickWeek >= playoffWeekStart) return null; // regular season only
+
+  const weekEntry = sd.matchups.find(m => m.week === pickWeek);
+  if (!weekEntry || !weekEntry.data || weekEntry.data.length === 0) return null;
+
+  const byMatchup = {};
+  weekEntry.data.forEach(entry => {
+    if (!entry.matchup_id) return;
+    (byMatchup[entry.matchup_id] = byMatchup[entry.matchup_id] || []).push(entry);
+  });
+
+  const matchups = Object.values(byMatchup)
+    .filter(pair => pair.length >= 2)
+    .map(([a, b]) => ({ matchupKey: matchupKeyFor(a.roster_id, b.roster_id), roster1: a.roster_id, roster2: b.roster_id }));
+
+  if (matchups.length === 0) return null;
+
+  return { season: currentSeason, week: pickWeek, matchups, lockAt: computePickemLockTimestamp(pickWeek) };
+}
+
+function renderPickem() {
+  populatePickemPickerPicker();
+  if (!_matchupPicksLoaded) {
+    _matchupPicksLoaded = true;
+    refreshMatchupPicks();
+  } else {
+    renderPickemMatchups();
+    renderPickemLeaderboard();
+  }
+}
+
+async function refreshMatchupPicks() {
+  try {
+    const resp = await fetch(`${PROPHECY_CONFIG.APPS_SCRIPT_URL}?action=matchuppicks`);
+    const data = await resp.json();
+    // Google Sheets auto-converts numeric-looking cells (season "2026",
+    // pickedRosterId) to real numbers on read, even though everything sent
+    // to submitpick was typed consistently — normalize here so every
+    // downstream === comparison (myPick lookups, per-team counts) works
+    // regardless of what type came back. Without this, a pick round-trips
+    // through the server and stops matching itself.
+    if (data.ok) {
+      _allMatchupPicks = data.picks.map(p => ({
+        ...p,
+        season: String(p.season),
+        week: Number(p.week),
+        pickedRosterId: Number(p.pickedRosterId),
+      }));
+    }
+  } catch (e) {
+    console.warn('Failed to load matchup picks:', e);
+  }
+  renderPickemMatchups();
+  renderPickemLeaderboard();
+}
+
+function renderPickemMatchups() {
+  const card = document.querySelector('#pickem-card');
+  const container = document.querySelector('#pickem-matchups');
+  const metaEl = document.querySelector('#pickem-meta');
+  if (!container || !card || !metaEl) return;
+
+  const info = getPickemWeekInfo();
+  if (!info) {
+    card.style.display = 'none';
+    return;
+  }
+  card.style.display = '';
+
+  const locked = Date.now() >= info.lockAt.getTime();
+  const lockLabel = info.lockAt.toLocaleString(undefined, {
+    weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+  });
+  metaEl.innerHTML = `<div class="pickem-meta">Week ${info.week} · ${locked ? `Locked ${lockLabel}` : `Locks ${lockLabel}`}</div>`;
+
+  const pickerName = document.querySelector('#pickem-picker-name')?.value || '';
+
+  container.innerHTML = info.matchups.map(mu => {
+    const myPick = pickerName
+      ? _allMatchupPicks.find(p => p.season === info.season && p.week === info.week && p.matchupKey === mu.matchupKey && p.pickerName === pickerName)
+      : null;
+    // Tallies (bars/pct/counts) and everyone else's picks stay hidden until
+    // the week actually locks — picking just highlights your own choice,
+    // nothing else, per Joe (no "vote to see results" reveal here, unlike
+    // Polls).
+    const revealed = locked;
+
+    const picksForMatchup = revealed
+      ? _allMatchupPicks.filter(p => p.season === info.season && p.week === info.week && p.matchupKey === mu.matchupKey)
+      : [];
+    const total = picksForMatchup.length;
+
+    const teamBtn = (rosterId) => {
+      const m = getManager(rosterId);
+      const isMine = !!myPick && myPick.pickedRosterId === rosterId;
+
+      if (!revealed) {
+        return `
+          <button type="button" class="pickem-team-btn${isMine ? ' pickem-mine' : ''}" data-matchup-key="${escapeAttr(mu.matchupKey)}" data-roster-id="${rosterId}">
+            <span class="pickem-team-name">${avatarEl(m.avatar, m.display_name)}${escapeHtml(m.team_name)}</span>
+          </button>`;
+      }
+
+      const count = picksForMatchup.filter(p => p.pickedRosterId === rosterId).length;
+      const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+
+      return `
+        <button type="button" class="pickem-team-btn${isMine ? ' pickem-mine' : ''}" data-matchup-key="${escapeAttr(mu.matchupKey)}" data-roster-id="${rosterId}" disabled>
+          <span class="pickem-team-bar" style="width:${pct}%;"></span>
+          <span class="pickem-team-name">${isMine ? '✓ ' : ''}${avatarEl(m.avatar, m.display_name)}${escapeHtml(m.team_name)}</span>
+          <span class="pickem-team-pct">${pct}% (${count})</span>
+        </button>`;
+    };
+
+    return `
+      <div class="pickem-matchup-card">
+        <div class="pickem-matchup-teams">
+          ${teamBtn(mu.roster1)}
+          ${teamBtn(mu.roster2)}
+        </div>
+      </div>`;
+  }).join('');
+
+  if (!locked) {
+    container.querySelectorAll('.pickem-team-btn').forEach(btn => {
+      btn.addEventListener('click', () => handlePickemPick(info, btn.dataset.matchupKey, Number(btn.dataset.rosterId)));
+    });
+  }
+}
+
+async function handlePickemPick(info, matchupKey, pickedRosterId) {
+  const pickerName = document.querySelector('#pickem-picker-name')?.value;
+  if (!pickerName) {
+    alert('Pick your name from the "Picking as" dropdown first.');
+    return;
+  }
+  if (Date.now() >= info.lockAt.getTime()) {
+    alert('Picks are locked for this week.');
+    renderPickemMatchups();
+    return;
+  }
+
+  // Optimistic local update, same pattern as handlePollVote — reconciled
+  // against the server response, which is the real gatekeeper on the lock.
+  const previousPicks = _allMatchupPicks;
+  _allMatchupPicks = _allMatchupPicks.filter(p => !(p.season === info.season && p.week === info.week && p.matchupKey === matchupKey && p.pickerName === pickerName));
+  _allMatchupPicks.push({ season: info.season, week: info.week, matchupKey, pickerName, pickedRosterId, timestamp: new Date().toISOString() });
+  renderPickemMatchups();
+
+  // Same "no explicit Content-Type" CORS trick used by Polls/Prophecies.
+  try {
+    const resp = await fetch(PROPHECY_CONFIG.APPS_SCRIPT_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'submitpick', season: info.season, week: info.week, matchupKey, pickerName, pickedRosterId }),
+    });
+    const data = await resp.json();
+    if (!data.ok) {
+      _allMatchupPicks = previousPicks;
+      alert(data.error || 'Pick failed to save.');
+      renderPickemMatchups();
+      return;
+    }
+  } catch (e) {
+    console.warn('Pick failed to save:', e);
+  }
+  refreshMatchupPicks();
+}
+
+// Season pick accuracy per manager: correct / total picks made this season,
+// counted only for weeks that are actually decided. A matchup that ends in
+// a real point tie is excluded entirely from both sides' totals (nobody
+// could have picked it correctly) rather than counted against anyone.
+// Requires having picked in at least half of the regular-season weeks
+// played so far to appear on the leaderboard at all — measured in distinct
+// WEEKS picked, not raw pick count, so it scales correctly regardless of
+// how many matchups land in a given week (a single fully-picked week
+// shouldn't clear the bar for a whole season). This is what keeps an early
+// 1-for-1 fluke from topping the board. Ties on accuracy break by total
+// correct picks (more volume wins), then by name for full determinism.
+function computePickemLeaderboard() {
+  const currentSeason = state.league?.season || KNOWN_LATEST_SEASON;
+  const seasonMatchups = state.allMatchups.filter(m => m.season === currentSeason);
+  if (seasonMatchups.length === 0) return { rows: [], weeksPlayed: 0 };
+
+  const resultByKey = {}; // `${week}_${matchupKey}` -> winning roster id, or null for a real tie
+  seasonMatchups.forEach(m => {
+    const key = `${m.week}_${matchupKeyFor(m.roster1, m.roster2)}`;
+    resultByKey[key] = m.pts1 === m.pts2 ? null : (m.pts1 > m.pts2 ? m.roster1 : m.roster2);
+  });
+
+  const weeksPlayed = new Set(seasonMatchups.map(m => m.week)).size;
+  const minWeeks = Math.max(1, Math.ceil(weeksPlayed / 2));
+
+  const tally = {}; // pickerName -> {correct, total, weeksPicked: Set<week>}
+  _allMatchupPicks
+    .filter(p => p.season === currentSeason)
+    .forEach(p => {
+      const week = Number(p.week);
+      const resultKey = `${week}_${p.matchupKey}`;
+      if (!(resultKey in resultByKey)) return; // week not decided yet
+      const t = (tally[p.pickerName] = tally[p.pickerName] || { correct: 0, total: 0, weeksPicked: new Set() });
+      t.weeksPicked.add(week); // counts toward participation even if this specific matchup tied
+      const winner = resultByKey[resultKey];
+      if (winner === null) return; // real tie — excluded from the accuracy tally itself
+      t.total++;
+      if (Number(p.pickedRosterId) === winner) t.correct++;
+    });
+
+  const rows = Object.entries(tally)
+    .map(([pickerName, t]) => ({ pickerName, correct: t.correct, total: t.total, weeksPicked: t.weeksPicked.size, pct: t.total ? t.correct / t.total : 0 }))
+    .filter(r => r.weeksPicked >= minWeeks && r.total > 0)
+    .sort((a, b) => b.pct - a.pct || b.correct - a.correct || a.pickerName.localeCompare(b.pickerName));
+
+  return { rows, weeksPlayed };
+}
+
+function pickemManagerFor(pickerName) {
+  return getAllManagers().find(m => m.display_name === pickerName) || null;
+}
+
+function renderPickemLeaderboard() {
+  const container = document.querySelector('#pickem-leaderboard');
+  if (!container) return;
+
+  const { rows, weeksPlayed } = computePickemLeaderboard();
+  if (weeksPlayed === 0) {
+    container.innerHTML = '<p class="pickem-empty">Leaderboard fills in once this season\'s picks start resolving.</p>';
+    return;
+  }
+  if (rows.length === 0) {
+    container.innerHTML = '<p class="pickem-empty">Nobody has qualified for the leaderboard yet — keep picking.</p>';
+    return;
+  }
+
+  const medal = ['🥇', '🥈', '🥉'];
+  const top3 = rows.slice(0, 3);
+  // Visual order 2nd / 1st / 3rd (1st raised in the center), per Joe's spec.
+  const podiumOrder = [top3[1], top3[0], top3[2]].filter(Boolean);
+  const rankOf = r => top3.indexOf(r) + 1;
+
+  const podiumHtml = podiumOrder.map(r => {
+    const rank = rankOf(r);
+    const m = pickemManagerFor(r.pickerName);
+    const name = m ? m.team_name : r.pickerName;
+    return `
+      <div class="pickem-podium-tile rank-${rank}">
+        <span class="pickem-podium-medal">${medal[rank - 1]}</span>
+        <span class="pickem-podium-name">${escapeHtml(name)}</span>
+        <span class="pickem-podium-pct">${Math.round(r.pct * 100)}%</span>
+        <span class="pickem-podium-record">${r.correct}-${r.total - r.correct}</span>
+      </div>`;
+  }).join('');
+
+  const fullRankingsHtml = rows.map((r, i) => {
+    const m = pickemManagerFor(r.pickerName);
+    const name = m ? m.team_name : r.pickerName;
+    return `
+      <div class="pickem-full-rankings-row">
+        <span>${i + 1}. ${escapeHtml(name)}</span>
+        <span style="color:var(--muted);font-family:'DM Mono',monospace;">${Math.round(r.pct * 100)}% (${r.correct}-${r.total - r.correct})</span>
+      </div>`;
+  }).join('');
+
+  container.innerHTML = `
+    <div class="pickem-podium">${podiumHtml}</div>
+    <button type="button" class="pickem-full-rankings-toggle" id="pickem-full-rankings-toggle">${_pickemFullRankings ? 'Hide full rankings' : 'See full rankings'}</button>
+    <div id="pickem-full-rankings-list" ${_pickemFullRankings ? '' : 'hidden'} style="margin-top:8px;">${fullRankingsHtml}</div>`;
+
+  const toggle = document.querySelector('#pickem-full-rankings-toggle');
+  if (toggle) {
+    toggle.addEventListener('click', () => {
+      _pickemFullRankings = !_pickemFullRankings;
+      renderPickemLeaderboard();
+    });
   }
 }
 

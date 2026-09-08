@@ -35,6 +35,7 @@ const CONFIG = {
   POLL_PARTICIPANTS_SHEET_NAME: 'PollParticipants',
   COMMISSIONER_CALLOUTS_SHEET_NAME: 'CommissionerCallouts',
   WEEKLY_REPORTS_SHEET_NAME: 'WeeklyReports',
+  MATCHUP_PICKS_SHEET_NAME: 'MatchupPicks',
 
   // Playoff bracket size — used to decide which roster_ids get a real placement
   // vs. get ranked by regular-season record for "finishes top N" predictions
@@ -71,6 +72,17 @@ const POLL_VOTE_HEADERS = ['pollId', 'voterName', 'option', 'timestamp'];
 // closes that side channel.
 const POLL_PARTICIPANT_HEADERS = ['pollId', 'voterName'];
 
+// Weekly Matchup Pick'em — one row per (season, week, matchupKey, pickerName),
+// upserted the same way PollVotes is, so changing a pick before lock
+// overwrites rather than duplicating. matchupKey is the week's two roster
+// ids, sorted numerically and joined with "_" (e.g. "3_11") so the same key
+// comes out regardless of which side Sleeper's raw data lists first.
+// Scoring/leaderboard math happens entirely client-side in index.html (same
+// as poll tallying) by comparing pickedRosterId against each week's real
+// final score once it's decided — no separate resolution step here. See
+// claude/matchup-pickem-plan.md.
+const MATCHUP_PICK_HEADERS = ['season', 'week', 'matchupKey', 'pickerName', 'pickedRosterId', 'timestamp'];
+
 // ---------- HTTP entry points ----------
 
 function doGet(e) {
@@ -82,6 +94,10 @@ function doGet(e) {
 
   if (action === 'polls') {
     return jsonResponse({ ok: true, polls: getAllPolls(), votes: getAllPollVotes() });
+  }
+
+  if (action === 'matchuppicks') {
+    return jsonResponse({ ok: true, picks: getAllMatchupPicks() });
   }
 
   // League News: commissioner callouts + weekly reports. ?preview=1 also
@@ -128,6 +144,10 @@ function doPost(e) {
 
   if (action === 'createpoll') {
     return jsonResponse(submitPoll(body));
+  }
+
+  if (action === 'submitpick') {
+    return jsonResponse(submitMatchupPick(body));
   }
 
   return jsonResponse({ ok: false, error: 'Unknown action. Resolve freeform predictions directly in the sheet (status column).' }, 400);
@@ -485,6 +505,127 @@ function submitPollVote(body) {
     } catch (e) {
       // Non-fatal — see comment above. The vote itself already saved.
     }
+  }
+
+  return { ok: true };
+}
+
+// ---------- Matchup Pick'em ----------
+// See claude/matchup-pickem-plan.md. index.html builds each week's pick
+// cards straight from the live Sleeper matchup data it already fetches for
+// standings — this backend only stores who picked what, and re-checks the
+// lock time itself before accepting a pick (same "don't trust a stale
+// client" pattern submitPollVote uses for a poll's closesAt/active flag).
+
+function getMatchupPicksSheet() {
+  return getOrCreateSheet(CONFIG.MATCHUP_PICKS_SHEET_NAME, MATCHUP_PICK_HEADERS);
+}
+
+function getAllMatchupPicks() {
+  const sheet = getMatchupPicksSheet();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+  const values = sheet.getRange(2, 1, lastRow - 1, MATCHUP_PICK_HEADERS.length).getValues();
+  return values
+    .map(row => {
+      const obj = {};
+      MATCHUP_PICK_HEADERS.forEach((h, i) => { obj[h] = row[i]; });
+      return obj;
+    })
+    .filter(p => p.season && p.week && p.matchupKey && p.pickerName);
+}
+
+function findMatchupPickRowIndex(sheet, season, week, matchupKey, pickerName) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return -1;
+  const rows = sheet.getRange(2, 1, lastRow - 1, 4).getValues(); // season, week, matchupKey, pickerName
+  for (let i = 0; i < rows.length; i++) {
+    if (String(rows[i][0]) === String(season) && Number(rows[i][1]) === Number(week) &&
+        rows[i][2] === matchupKey && rows[i][3] === pickerName) {
+      return i + 2;
+    }
+  }
+  return -1;
+}
+
+// Converts a Y-M-D + hour:minute *in a specific IANA timezone* into a real
+// UTC Date — handles daylight saving automatically. Near-identical copy of
+// this and computePickemLockTimestamp() lives in index.html; kept in sync
+// by hand since the two files don't share code.
+function zonedTimeToUtc(year, month, day, hour, minute, timeZone) {
+  const asUTC = Date.UTC(year, month, day, hour, minute);
+  const d = new Date(asUTC);
+  // Format the same instant both as the target zone's wall clock and as UTC's
+  // wall clock, then parse both strings back — since both parses happen in
+  // whatever timezone this script's *project* is set to (Project Settings),
+  // that host timezone cancels out of the subtraction. (The previous version
+  // compared a real Date instant against a string re-parsed in the host
+  // timezone, which only happened to work when the host's timezone was UTC —
+  // broke silently if the Apps Script project's timezone is America/Los_Angeles
+  // itself, since target-zone-equals-host-zone made the "fix" a no-op.)
+  const tzString = d.toLocaleString('en-US', { timeZone: timeZone });
+  const utcString = d.toLocaleString('en-US', { timeZone: 'UTC' });
+  const diff = new Date(utcString).getTime() - new Date(tzString).getTime();
+  return new Date(asUTC + diff);
+}
+
+// This week's picks lock Thursday 5:00pm Pacific (8:00pm Eastern) — except
+// weeks 1 and 12, which lock Wednesday 5:00pm Pacific instead (this league's
+// schedule has an early Wednesday game those weeks). No real per-game
+// kickoff data exists from Sleeper's API (confirmed while building League
+// News — see the NFL_SCHEDULE comment below), so this is a single week-wide
+// lock rather than trying to lock each matchup independently.
+//
+// Deliberately NOT anchored to a real season-start date (not reliably
+// available either) — instead finds the Tuesday of the CURRENT real
+// calendar week (the NFL's standard week-turnover day) and adds 1 or 2
+// days. Only needs to be correct while a given week's picks are actually
+// open, which is always true whenever this is called for "this week."
+function computePickemLockTimestamp(week) {
+  const now = new Date();
+  const zone = 'America/Los_Angeles';
+  const dowMap = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  const dow = dowMap[now.toLocaleString('en-US', { timeZone: zone, weekday: 'short' })];
+  const daysSinceTuesday = (dow - 2 + 7) % 7;
+
+  const y = Number(now.toLocaleString('en-US', { timeZone: zone, year: 'numeric' }));
+  const m = Number(now.toLocaleString('en-US', { timeZone: zone, month: 'numeric' })) - 1;
+  const d = Number(now.toLocaleString('en-US', { timeZone: zone, day: 'numeric' }));
+
+  const tuesday = zonedTimeToUtc(y, m, d, 0, 0, zone);
+  tuesday.setUTCDate(tuesday.getUTCDate() - daysSinceTuesday);
+
+  const lockDayOffset = (week === 1 || week === 12) ? 1 : 2; // Wed vs Thu
+  const lockDate = new Date(tuesday.getTime());
+  lockDate.setUTCDate(lockDate.getUTCDate() + lockDayOffset);
+
+  return zonedTimeToUtc(lockDate.getUTCFullYear(), lockDate.getUTCMonth(), lockDate.getUTCDate(), 17, 0, zone);
+}
+
+// Open to anyone — same open-submission spirit as Polls/Prophecies. Picks
+// are upserted per (season, week, matchupKey, pickerName), so changing your
+// mind before lock overwrites your existing pick instead of duplicating.
+function submitMatchupPick(body) {
+  const required = ['season', 'week', 'matchupKey', 'pickerName', 'pickedRosterId'];
+  for (const field of required) {
+    if (body[field] === undefined || body[field] === null || body[field] === '') {
+      return { ok: false, error: `Missing field: ${field}` };
+    }
+  }
+
+  const week = Number(body.week);
+  if (Date.now() >= computePickemLockTimestamp(week).getTime()) {
+    return { ok: false, error: 'Picks are locked for this week.' };
+  }
+
+  const sheet = getMatchupPicksSheet();
+  const rowIndex = findMatchupPickRowIndex(sheet, body.season, week, body.matchupKey, body.pickerName);
+  const row = [body.season, week, body.matchupKey, body.pickerName, body.pickedRosterId, new Date().toISOString()];
+
+  if (rowIndex === -1) {
+    sheet.appendRow(row);
+  } else {
+    sheet.getRange(rowIndex, 1, 1, MATCHUP_PICK_HEADERS.length).setValues([row]);
   }
 
   return { ok: true };
