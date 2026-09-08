@@ -4,6 +4,20 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Bad Batch HQ</title>
+
+<!-- PWA: installable "add to home screen" support. Icons are a placeholder
+     BB monogram in the site's own colors — swap icons/icon-*.png (and
+     re-point manifest.json) whenever the real Bad Batch logo lands
+     (see backlog.md "Bring in the Bad Batch logo"). -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0a0c10">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Bad Batch HQ">
+
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -69,12 +83,23 @@
   }
 
   .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
     font-family: 'Bebas Neue', sans-serif;
     font-size: 22px;
     letter-spacing: 3px;
     color: var(--accent);
     text-decoration: none;
     white-space: nowrap;
+  }
+
+  .logo-mark {
+    height: 28px;
+    width: 28px;
+    border-radius: 7px;
+    display: block;
+    flex-shrink: 0;
   }
 
   .league-name {
@@ -1645,7 +1670,8 @@
       height: 52px;
       flex-wrap: nowrap;
     }
-    .logo { font-size: 18px; letter-spacing: 2px; }
+    .logo { font-size: 18px; letter-spacing: 2px; gap: 8px; }
+    .logo-mark { height: 22px; width: 22px; border-radius: 5px; }
     .league-name { display: none; }
 
     /* Nav: scrollable pill row pinned to bottom of screen */
@@ -1827,9 +1853,78 @@
     .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr 1fr; }
     .h2h-scoreboard { grid-template-columns: 1fr 1fr; }
   }
+
+  /* ============================================================
+     IN-APP BROWSER NAG — shown when the page detects it's running
+     inside another app's embedded browser (Instagram, Facebook,
+     TikTok, etc.) rather than real Safari/Chrome. Those embedded
+     views can't install as a PWA and sometimes drop localStorage,
+     so this nudges people out to a real browser. See
+     initInAppBrowserBanner(). Fixed to the very top so it's the
+     first thing visible, above the loading screen.
+  ============================================================ */
+  #iab-banner {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 9999;
+    padding: 10px 14px;
+    padding-top: calc(10px + env(safe-area-inset-top));
+    background: var(--surface2);
+    border-bottom: 1px solid var(--accent);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+  }
+  #iab-banner .iab-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    max-width: 720px;
+    margin: 0 auto;
+  }
+  #iab-banner .iab-icon { font-size: 20px; flex-shrink: 0; }
+  #iab-banner .iab-text { flex: 1; font-size: 12.5px; line-height: 1.4; color: var(--text); }
+  #iab-banner .iab-text strong { color: var(--accent); }
+  #iab-banner .iab-actions { display: flex; gap: 8px; flex-shrink: 0; }
+  #iab-banner button {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 6px;
+    padding: 7px 12px;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+  }
+  #iab-banner button.iab-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--bg);
+  }
+  @media (max-width: 480px) {
+    #iab-banner .iab-row { flex-wrap: wrap; }
+    #iab-banner .iab-actions { width: 100%; }
+    #iab-banner .iab-actions button { flex: 1; }
+  }
 </style>
 </head>
 <body>
+
+<!-- IN-APP BROWSER NAG — see initInAppBrowserBanner() near the bottom of the
+     script. Hidden by default; JS shows it only when it detects an embedded
+     in-app browser (Instagram/Facebook/TikTok/etc.) on a phone. -->
+<div id="iab-banner" role="alert">
+  <div class="iab-row">
+    <div class="iab-icon">🔒</div>
+    <div class="iab-text" id="iab-text">You're viewing this in <strong>an in-app browser</strong>, which can block sign-in, saving, and installing this as an app. For the best experience, open it in your regular browser.</div>
+    <div class="iab-actions">
+      <button type="button" class="iab-primary" id="iab-open-btn" style="display:none;">Open in Chrome</button>
+      <button type="button" id="iab-copy-btn">Copy link</button>
+      <button type="button" id="iab-dismiss-btn">Dismiss</button>
+    </div>
+  </div>
+</div>
 
 <!-- LOADING SCREEN -->
 <div id="loading-screen">
@@ -1873,7 +1968,7 @@
 
 <!-- HEADER -->
 <header>
-  <span class="logo">BAD BATCH HQ</span>
+  <span class="logo"><img class="logo-mark" src="icons/icon-192.png" alt="" width="28" height="28">BAD BATCH HQ</span>
   <nav>
     <button class="active" onclick="showPage('dashboard')">Dashboard</button>
     <button onclick="showPage('history')">History</button>
@@ -6640,6 +6735,117 @@ function renderChangelogPreview() {
 // (not addEventListener) so a later call — see checkForNewPollBanner, which
 // can repurpose this same banner for a new-poll callout — cleanly replaces
 // this handler instead of both firing.
+// ============================================================
+// IN-APP BROWSER NAG
+// ------------------------------------------------------------
+// Embedded in-app browsers (Instagram, Facebook/Messenger, TikTok,
+// Snapchat, LinkedIn, Line, WeChat, Pinterest, and Discord's mobile
+// in-app view) can't install this as a PWA, and some of them wipe
+// localStorage/cookies between visits, which breaks "remember me"
+// style features (poll voting, seen-banner tracking, etc). There's
+// no way to force-redirect out of these — a page can't reliably
+// escape another app's webview — so this just detects the common
+// ones by user-agent and nudges people toward a real browser.
+//
+// Detection is necessarily incomplete: some in-app browsers (Sleeper's
+// own included, and iOS Mail/Messages link previews) don't leave a
+// distinct fingerprint in the UA string, so this can't catch every
+// case. It only fires on phone-width screens, skips itself entirely
+// once the page is already running installed/standalone (no point
+// nagging someone who already escaped), and remembers a dismissal
+// for the rest of the browser session.
+// ============================================================
+function detectInAppBrowser() {
+  const ua = navigator.userAgent || '';
+  const isAndroid = /Android/i.test(ua);
+
+  // Known in-app webview signatures.
+  const patterns = [
+    { test: /Instagram/i, name: 'Instagram' },
+    { test: /FBAN|FBAV|FB_IAB|FBIOS|FBSV/i, name: 'Facebook' },
+    { test: /Messenger/i, name: 'Messenger' },
+    { test: /TikTok|musical_ly|BytedanceWebview/i, name: 'TikTok' },
+    { test: /Snapchat/i, name: 'Snapchat' },
+    { test: /LinkedInApp/i, name: 'LinkedIn' },
+    { test: /Line\//i, name: 'Line' },
+    { test: /MicroMessenger/i, name: 'WeChat' },
+    { test: /Pinterest/i, name: 'Pinterest' },
+    { test: /\bdiscord\b/i, name: 'Discord' },
+    { test: /Twitter/i, name: 'X/Twitter' },
+  ];
+  for (const p of patterns) {
+    if (p.test.test(ua)) return { inApp: true, name: p.name, isAndroid };
+  }
+
+  // Generic fallback: Android WebViews (as opposed to real Chrome) carry
+  // a "; wv)" token in the UA string. Catches apps not named above without
+  // a name to show, so the banner falls back to generic wording.
+  if (isAndroid && /; ?wv\)/i.test(ua)) {
+    return { inApp: true, name: null, isAndroid };
+  }
+
+  return { inApp: false };
+}
+
+function isStandaloneDisplay() {
+  return window.matchMedia && window.matchMedia('(display-mode: standalone)').matches
+    || window.navigator.standalone === true; // iOS home-screen launch
+}
+
+function initInAppBrowserBanner() {
+  if (sessionStorage.getItem('dynastyhq_iab_dismissed') === '1') return;
+  if (isStandaloneDisplay()) return;
+  if (window.innerWidth > 768) return; // desktop browsers aren't the problem here
+
+  const info = detectInAppBrowser();
+  if (!info.inApp) return;
+
+  const banner = document.querySelector('#iab-banner');
+  if (!banner) return;
+
+  const textEl = document.querySelector('#iab-text');
+  const openBtn = document.querySelector('#iab-open-btn');
+  const copyBtn = document.querySelector('#iab-copy-btn');
+  const dismissBtn = document.querySelector('#iab-dismiss-btn');
+
+  textEl.innerHTML = info.name
+    ? `You're viewing this inside <strong>${info.name}</strong>'s built-in browser, which can block sign-in, saving, and installing this as an app. For the best experience, open it in your regular browser.`
+    : `You're viewing this in <strong>an in-app browser</strong>, which can block sign-in, saving, and installing this as an app. For the best experience, open it in your regular browser.`;
+
+  // Android: many in-app browsers still honor an explicit intent to hand
+  // the current URL off to Chrome. iOS has no equivalent API — Apple
+  // doesn't let a webview redirect itself into Safari — so iOS only gets
+  // the copy-link + manual-instructions path below.
+  if (info.isAndroid) {
+    openBtn.style.display = '';
+    openBtn.onclick = () => {
+      const url = location.href.replace(/^https?:\/\//, '');
+      window.location.href = `intent://${url}#Intent;scheme=https;package=com.android.chrome;end`;
+    };
+  }
+
+  copyBtn.onclick = async () => {
+    let ok = true;
+    try {
+      await navigator.clipboard.writeText(location.href);
+    } catch {
+      ok = false;
+    }
+    copyBtn.textContent = ok ? 'Copied!' : 'Copy failed';
+    setTimeout(() => { copyBtn.textContent = 'Copy link'; }, 1800);
+    if (ok && !info.isAndroid) {
+      textEl.innerHTML = `Link copied. Open Safari (or Chrome), paste it in, and go — or tap the <strong>⋯</strong> / share icon above and choose "Open in Safari" / "Open in Browser".`;
+    }
+  };
+
+  dismissBtn.onclick = () => {
+    sessionStorage.setItem('dynastyhq_iab_dismissed', '1');
+    banner.style.display = 'none';
+  };
+
+  banner.style.display = 'block';
+}
+
 function initWhatsNewBanner() {
   const seen = localStorage.getItem('dynastyhq_seen_version');
   if (seen === CURRENT_BUILD_VERSION) return;
@@ -6997,9 +7203,19 @@ const WELCOME_TOUR_SCREENS = [
       'Make predictions, track your hit rate, and chase the Top Seer title.',
     ],
     navTargets: ['prophecies'],
-    // Closing note, not part of the Prophecies description — rendered in its
-    // own visually separated block (see renderWelcomeTourScreen) so it doesn't
-    // read as one more sentence about the Prophecies tab.
+  },
+  {
+    icon: '📲',
+    title: 'Add it to your home screen',
+    text: [
+      "Bad Batch HQ works like an app once it's added — its own icon, no browser bar, opens straight to the dashboard.",
+      'iPhone: tap the Share icon, then "Add to Home Screen."',
+      'Android: tap the ⋮ menu, then "Add to Home screen" (or "Install app").',
+    ],
+    navTargets: [],
+    // Closing note, not part of the add-to-home-screen instructions — rendered
+    // in its own visually separated block (see renderWelcomeTourScreen) so it
+    // doesn't read as one more sentence about installing the app.
     note: '🧭 Replay this tour anytime from the Dashboard, and catch up on everything shipped in the Changelog.',
   },
 ];
@@ -7253,6 +7469,7 @@ async function init() {
   scan();
 })();
 
+initInAppBrowserBanner();
 init();
 initWelcomeWalkthrough();
 initWhatsNewBanner();
