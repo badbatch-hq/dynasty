@@ -2015,7 +2015,7 @@
     </div>
 
     <!-- Summary stats -->
-    <div class="grid-3 stagger" id="dash-stats" style="margin-bottom:24px;">
+    <div class="grid-4 stagger" id="dash-stats" style="margin-bottom:24px;">
       <div class="stat-pill">
         <span class="label">Season</span>
         <span class="value gold" id="stat-season">—</span>
@@ -2027,6 +2027,10 @@
       <div class="stat-pill">
         <span class="label">Years Running</span>
         <span class="value" id="stat-years">—</span>
+      </div>
+      <div class="stat-pill">
+        <span class="label">Defending Champ</span>
+        <span class="value" id="stat-champ" style="font-size:16px;">—</span>
       </div>
     </div>
 
@@ -3793,6 +3797,20 @@ function renderDashboard() {
   document.getElementById('stat-season').textContent = currentSeason;
   document.getElementById('stat-week').textContent = isOffseason ? 'Off' : lastWeek;
   document.getElementById('stat-years').textContent = SEASONS.filter(s => seasonLeagueIds[s]).length;
+
+  // Defending Champ: champion of the last fully completed season (independent
+  // of isOffseason — even mid-season, "defending" means the prior year's
+  // titleholder until this season's own championship game is decided).
+  let defendingChampName = '—';
+  if (lastCompletedSeason) {
+    const champPlacements = getPlayoffPlacements(lastCompletedSeason);
+    const champRosterId = Object.keys(champPlacements).find(rid => champPlacements[rid] === 1);
+    if (champRosterId != null) {
+      const champManager = getManager(Number(champRosterId), lastCompletedSeason);
+      defendingChampName = champManager?.team_name || '—';
+    }
+  }
+  document.getElementById('stat-champ').textContent = defendingChampName;
 
   if (isOffseason) {
     document.getElementById('dash-season-info').textContent =
