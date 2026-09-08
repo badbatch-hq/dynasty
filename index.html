@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Dynasty HQ</title>
+<title>Bad Batch HQ</title>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -1587,7 +1587,7 @@
 
 <!-- LOADING SCREEN -->
 <div id="loading-screen">
-  <div class="loading-logo">DYNASTY HQ</div>
+  <div class="loading-logo">BAD BATCH HQ</div>
   <div class="loading-bar-track">
     <div class="loading-bar-fill" id="load-bar"></div>
   </div>
@@ -1613,8 +1613,7 @@
 
 <!-- HEADER -->
 <header>
-  <span class="logo">DYNASTY HQ</span>
-  <span class="league-name" id="header-league-name">Loading...</span>
+  <span class="logo">BAD BATCH HQ</span>
   <nav>
     <button class="active" onclick="showPage('dashboard')">Dashboard</button>
     <button onclick="showPage('history')">History</button>
@@ -2265,7 +2264,6 @@ async function loadAllData() {
   // The "current display" league is the one for KNOWN_LATEST_SEASON
   const displayLeagueId = seasonLeagueIds[KNOWN_LATEST_SEASON] || LEAGUE_ID;
   state.league = await apiFetch(`/league/${displayLeagueId}`);
-  document.getElementById('header-league-name').textContent = state.league.name;
 
   setLoadStatus('Loading rosters & managers...', 15);
 
@@ -5673,7 +5671,7 @@ const CURRENT_BUILD_VERSION = '2026-09-05.1';
 // internal build-order trivia. Real patch notes start fresh from here —
 // add new dated entries above this one as things actually ship.
 const CHANGELOG = [
-  { date: '2026-09-05', text: 'Dynasty HQ is live — standings and full league history, head-to-head grudge matches, a trade log that grades every deal in hindsight, a rookie draft order calculator, Prophecies predictions, automated League News, and Polls. Plus a first-visit walkthrough and this Changelog/quick-links page. More on the way.' },
+  { date: '2026-09-05', text: 'Bad Batch HQ is live — standings and full league history, head-to-head grudge matches, a trade log that grades every deal in hindsight, a rookie draft order calculator, Prophecies predictions, automated League News, and Polls. Plus a first-visit walkthrough and this Changelog/quick-links page. More on the way.' },
 ];
 
 function changelogItemHtml(c, withDate = true) {
@@ -6038,7 +6036,7 @@ const WELCOME_TOUR_KEY = 'dynastyhq_seen_welcome_v1';
 const WELCOME_TOUR_SCREENS = [
   {
     icon: '🏈',
-    title: 'Welcome to Dynasty HQ',
+    title: 'Welcome to Bad Batch HQ',
     text: [
       'Everything about our dynasty league, in one place — standings, history, trades, and more.',
       "Here's a quick look around before you dive in.",
@@ -6192,7 +6190,6 @@ async function init() {
     // League data came from cache, but player names are cached separately (longer TTL) —
     // make sure they're loaded too before we render anything that shows player names.
     await loadPlayerData();
-    document.getElementById('header-league-name').textContent = state.league?.name || '';
     setLoadStatus('Loaded from cache', 100);
     setTimeout(() => {
       document.getElementById('loading-screen').style.display = 'none';
