@@ -742,6 +742,262 @@
 
   .trophy-tile.danger .trophy-name { color: var(--danger); }
 
+  /* LEAGUE NEWS — dashboard teaser + its own nav-less page. Two card
+     families, matching the reference screenshots Joe provided: a
+     photo-forward player card (position color coded) for Players/
+     Benchwarmers of the Week, and a compact two-up award card for every
+     other weekly trophy. See claude/league-news-plan.md for the full
+     design rationale. */
+  .league-news-teaser {
+    background: linear-gradient(135deg, rgba(75,142,200,0.12), rgba(75,142,200,0.05));
+    border: 1px solid rgba(75,142,200,0.3);
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    cursor: pointer;
+    text-decoration: none;
+    color: inherit;
+  }
+
+  .league-news-teaser:hover { border-color: var(--accent2); }
+  .league-news-teaser .robber-baron-icon { font-size: 36px; }
+  .league-news-teaser .robber-baron-title { font-family: 'Bebas Neue', sans-serif; font-size: 22px; letter-spacing: 2px; color: var(--accent2); }
+  .league-news-teaser .robber-baron-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .league-news-teaser .teaser-arrow { margin-left: auto; font-size: 22px; color: var(--accent2); }
+
+  /* Position color coding, shared by player cards below */
+  .pos-QB  { --pos-color: #c84b4b; }
+  .pos-RB  { --pos-color: #4bc87a; }
+  .pos-WR  { --pos-color: #4b8ec8; }
+  .pos-TE  { --pos-color: #c8a84b; }
+  .pos-K   { --pos-color: #a05fd6; }
+  .pos-DEF { --pos-color: #5a6070; }
+
+  .player-card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .player-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-top: 3px solid var(--pos-color, var(--accent));
+    border-radius: 10px;
+    padding: 14px;
+    text-align: center;
+  }
+
+  .player-card .player-pos {
+    display: inline-block;
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: var(--pos-color, var(--accent));
+    border: 1px solid var(--pos-color, var(--accent));
+    border-radius: 4px;
+    padding: 1px 6px;
+    margin-bottom: 8px;
+  }
+
+  .player-card .player-avatar {
+    width: 56px; height: 56px; border-radius: 50%;
+    background: var(--dim);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Bebas Neue', sans-serif; font-size: 20px; color: var(--muted);
+    margin: 0 auto 8px;
+    overflow: hidden;
+  }
+
+  .player-card .player-avatar img { width: 100%; height: 100%; object-fit: cover; }
+  .player-card .player-name { font-weight: 600; font-size: 13px; margin-bottom: 2px; }
+  .player-card .player-meta { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+  .player-card .player-score { font-family: 'Bebas Neue', sans-serif; font-size: 26px; color: var(--text); }
+  .player-card .player-manager { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+  /* Award card — compact two-up grid, everything else in the weekly report */
+  .award-card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .award-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+
+  .award-card .award-title { font-family: 'Bebas Neue', sans-serif; font-size: 14px; letter-spacing: 1px; color: var(--accent); margin-bottom: 4px; }
+  .award-card .award-winner { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
+  .award-card .award-detail { font-size: 11px; color: var(--muted); font-family: 'DM Mono', monospace; }
+  .award-card.danger { border-color: rgba(200,75,75,0.3); background: rgba(200,75,75,0.05); }
+  .award-card.danger .award-title { color: var(--danger); }
+
+  /* Playoff picture */
+  .playoff-picture-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 20px; }
+  .playoff-picture-col .playoff-col-label { font-family: 'Bebas Neue', sans-serif; letter-spacing: 1px; font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+  .playoff-picture-col.in .playoff-col-label { color: var(--success); }
+  .playoff-picture-col.bubble .playoff-col-label { color: var(--accent); }
+  .playoff-picture-col.out .playoff-col-label { color: var(--muted); }
+  .playoff-team-row { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+  .playoff-team-row:last-child { border-bottom: none; }
+
+  /* Power rankings */
+  .power-rank-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .power-rank-row:last-child { border-bottom: none; }
+  .power-rank-num { font-family: 'Bebas Neue', sans-serif; font-size: 18px; color: var(--accent); width: 24px; }
+  .power-rank-trend { width: 20px; text-align: center; }
+  .power-rank-trend.up { color: var(--success); }
+  .power-rank-trend.down { color: var(--danger); }
+  .power-rank-trend.same { color: var(--muted); }
+  .power-rank-trend.new { color: var(--accent2); font-size: 10px; }
+  .power-rank-team { flex: 1; }
+  .power-rank-stats { color: var(--muted); font-size: 11px; font-family: 'DM Mono', monospace; }
+
+  /* Commissioner callouts */
+  .callout-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 12px; }
+  .callout-card.draft-preview { border-style: dashed; border-color: var(--accent2); }
+  .callout-title { font-family: 'Bebas Neue', sans-serif; font-size: 16px; letter-spacing: 1px; color: var(--accent); margin-bottom: 4px; }
+  .callout-date { font-size: 11px; color: var(--muted); margin-bottom: 8px; font-family: 'DM Mono', monospace; }
+  .callout-body { font-size: 13px; line-height: 1.6; }
+  .callout-draft-tag { display: inline-block; font-size: 10px; letter-spacing: 0.5px; color: var(--accent2); border: 1px solid var(--accent2); border-radius: 4px; padding: 1px 6px; margin-left: 8px; vertical-align: middle; }
+
+  /* Weekly reports — one collapsible section per week, same pattern as the
+     Trades page's per-season groups */
+  .weekly-report-summary {
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 18px;
+    letter-spacing: 1.5px;
+    padding: 12px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 12px;
+  }
+
+  .weekly-report-summary::-webkit-details-marker { display: none; }
+  .weekly-report-group { margin-bottom: 20px; }
+  .weekly-report-section-label { font-family: 'Bebas Neue', sans-serif; font-size: 14px; letter-spacing: 1px; color: var(--muted); margin: 16px 0 10px; }
+
+  @media (max-width: 768px) {
+    .playoff-picture-grid { grid-template-columns: 1fr; gap: 12px; }
+  }
+
+  /* FIRST-VISIT WELCOME WALKTHROUGH — one-time (replayable) orientation
+     modal for a leaguemate's first visit. Reuses the site's existing
+     card/button visual language rather than introducing a new design
+     system. See claude/first-visit-walkthrough-plan.md and
+     initWelcomeWalkthrough()/openWelcomeWalkthrough() below. z-index sits
+     above #loading-screen (1000) on purpose — it should appear immediately
+     on first load, not wait for the data fetch to finish and the loading
+     screen to clear. */
+  .welcome-modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1100;
+    background: rgba(0,0,0,0.65);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+
+  .welcome-modal {
+    position: relative;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px;
+    max-width: 460px;
+    width: 100%;
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+  }
+
+  .welcome-modal-skip {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 12px;
+    cursor: pointer;
+    padding: 4px 8px;
+    letter-spacing: 0.3px;
+  }
+
+  .welcome-modal-skip:hover { color: var(--text); }
+
+  .welcome-modal-icon { font-size: 40px; margin-bottom: 12px; }
+  .welcome-modal-title { font-family: 'Bebas Neue', sans-serif; font-size: 26px; letter-spacing: 1.5px; color: var(--accent); margin-bottom: 10px; padding-right: 40px; }
+  .welcome-modal-text { font-size: 14px; line-height: 1.6; color: var(--text); }
+  .welcome-modal-text + .welcome-modal-text { margin-top: 8px; }
+
+  /* Closing "you can replay this / check the changelog" note — deliberately
+     set off from the screen's own descriptive text as its own soft callout
+     chip (not just a divider line) so it doesn't read as one more sentence
+     about whichever tab that screen happens to be describing. */
+  .welcome-modal-note {
+    margin-top: 16px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: rgba(200,168,75,0.1);
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--muted);
+  }
+
+  /* Nav-tab "spotlight" while the walkthrough discusses it — glows through
+     the modal's translucent backdrop rather than requiring the header to be
+     fully visible. Cleared/reapplied per screen by applyTourNavGlow(). */
+  @keyframes tourGlowPulse {
+    0%, 100% { box-shadow: 0 0 0 2px var(--accent), 0 0 14px 3px rgba(200,168,75,0.5); }
+    50% { box-shadow: 0 0 0 2px var(--accent), 0 0 22px 6px rgba(200,168,75,0.85); }
+  }
+
+  nav button.tour-glow-target {
+    color: var(--accent);
+    background: rgba(200,168,75,0.15);
+    animation: tourGlowPulse 1.6s ease-in-out infinite;
+  }
+
+  .welcome-modal-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 28px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+  }
+
+  .welcome-modal-dots { display: flex; gap: 6px; }
+  .welcome-modal-dots .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--dim); transition: background 0.15s; }
+  .welcome-modal-dots .dot.active { background: var(--accent); }
+
+  .welcome-modal-nav { display: flex; gap: 8px; flex-shrink: 0; }
+  #welcome-modal-back:disabled { opacity: 0.35; cursor: default; pointer-events: none; }
+
+  @media (max-width: 480px) {
+    .welcome-modal { padding: 24px 18px; }
+    .welcome-modal-title { font-size: 22px; }
+  }
+
   /* Per-asset and per-side point totals on trade cards */
   .asset-pts {
     color: var(--muted);
@@ -1338,6 +1594,23 @@
   <div class="loading-status" id="load-status">Initializing...</div>
 </div>
 
+<!-- FIRST-VISIT WELCOME WALKTHROUGH — shown once per dynastyhq_seen_welcome_v1
+     bump, always replayable via the "Take the tour" link on the dashboard.
+     See initWelcomeWalkthrough()/openWelcomeWalkthrough(). -->
+<div class="welcome-modal-overlay" id="welcome-modal-overlay" style="display:none;">
+  <div class="welcome-modal" role="dialog" aria-modal="true" aria-labelledby="welcome-modal-title-text">
+    <button type="button" class="welcome-modal-skip" id="welcome-modal-skip">Skip</button>
+    <div id="welcome-modal-body"></div>
+    <div class="welcome-modal-footer">
+      <div class="welcome-modal-dots" id="welcome-modal-dots"></div>
+      <div class="welcome-modal-nav">
+        <button type="button" class="btn btn-ghost" id="welcome-modal-back">Back</button>
+        <button type="button" class="btn" id="welcome-modal-next">Next</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- HEADER -->
 <header>
   <span class="logo">DYNASTY HQ</span>
@@ -1361,7 +1634,17 @@
       <p id="dash-season-info">Fetching league data...</p>
     </div>
 
-    <div id="dash-cache-bar"></div>
+    <!-- League News teaser — points at a dedicated page reachable only from
+         here (never in the main nav bar, same pattern as Changelog). See
+         renderLeagueNewsTeaser(). -->
+    <a href="#" class="league-news-teaser fade-up" id="league-news-teaser" style="display:none;" onclick="showPage('leaguenews'); return false;">
+      <div class="robber-baron-icon">📰</div>
+      <div style="flex:1;">
+        <div class="robber-baron-title">League News</div>
+        <div class="robber-baron-sub" id="league-news-teaser-sub">Loading...</div>
+      </div>
+      <div class="teaser-arrow" aria-hidden="true">→</div>
+    </a>
 
     <!-- One-time "what's new" banner — see initWhatsNewBanner(). Points into
          the Changelog tab, which is deliberately not in the nav bar. -->
@@ -1462,14 +1745,19 @@
       </div>
     </div>
 
-    <!-- Announcements -->
+    <!-- Changelog preview — see renderChangelogPreview(). Full history lives
+         on the Changelog tab, deliberately not in the nav bar (see
+         initWhatsNewBanner and the link below). -->
     <div class="card fade-up" style="margin-bottom:24px;">
-      <div class="card-title">League News</div>
-      <div id="dash-announcements"></div>
-      <div style="margin-top:12px;">
+      <div class="card-title">Changelog</div>
+      <div id="dash-changelog-preview"></div>
+      <div style="margin-top:12px;display:flex;gap:16px;flex-wrap:wrap;">
         <a href="#" onclick="showPage('changelog'); return false;" style="font-size:12px;color:var(--muted);">See full changelog →</a>
+        <a href="#" onclick="openWelcomeWalkthrough(); return false;" style="font-size:12px;color:var(--muted);">🧭 Take the tour</a>
       </div>
     </div>
+
+    <div id="dash-cache-bar"></div>
   </div>
 
   <!-- HISTORY PAGE -->
@@ -1786,6 +2074,27 @@
     </div>
 
     <div class="card fade-up" id="changelog-list"></div>
+  </div>
+
+  <!-- LEAGUE NEWS PAGE — not in the nav bar, reached only via the dashboard
+       teaser. See renderLeagueNewsPage(). Add ?preview=1 to the URL to also
+       see draft callouts/reports, rendered through this exact same page. -->
+  <div class="page" id="page-leaguenews">
+    <div class="page-header fade-up">
+      <h1>League News</h1>
+      <p id="league-news-page-sub">Commissioner callouts and automated weekly breakdowns</p>
+      <a href="#" onclick="showPage('dashboard'); return false;" style="font-size:12px;color:var(--muted);">← Back to Dashboard</a>
+    </div>
+
+    <div class="card fade-up" style="margin-bottom:24px;">
+      <div class="card-title">Commissioner Callouts</div>
+      <div id="league-news-callouts"><p class="poll-empty">Loading...</p></div>
+    </div>
+
+    <div class="card fade-up">
+      <div class="card-title">Weekly Reports</div>
+      <div id="league-news-reports"><p class="poll-empty">Loading...</p></div>
+    </div>
   </div>
 
 </main>
@@ -2828,6 +3137,7 @@ function showPage(name) {
   if (name === 'draftorder') renderDraftOrderPage();
   if (name === 'prophecies') renderPropheciesPage();
   if (name === 'changelog') renderChangelog();
+  if (name === 'leaguenews') renderLeagueNewsPage();
 }
 
 // ============================================================
@@ -2840,8 +3150,9 @@ function renderDashboard() {
   // unconditionally, up front — the standings computation below has a
   // couple of early `return`s (offseason branch, no-data branch) that must
   // never gate these.
-  renderAnnouncements();
+  renderChangelogPreview();
   renderPolls();
+  loadLeagueNews();
 
   const titleLink = document.getElementById('dash-league-title');
   titleLink.querySelector('.dash-title-text').textContent = state.league.name;
@@ -4911,7 +5222,7 @@ function escapeHtml(str) {
 }
 
 // ============================================================
-// LANDING PAGE — LINKOUTS, ANNOUNCEMENTS, POLLS, CHANGELOG
+// LANDING PAGE — LINKOUTS, POLLS, CHANGELOG
 // ============================================================
 // Polls talk to the same Apps Script Web App as Prophecies (see Code.gs) —
 // one deployment, routed by the `action` param, rather than a second one.
@@ -4929,30 +5240,6 @@ function escapeAttr(str) {
 const LINKOUTS = {
   sleeperUrl: `https://sleeper.com/leagues/${LEAGUE_ID}`,
 };
-
-// ---------- Announcements ----------
-// Newest first. Edit this array directly to post league news.
-const ANNOUNCEMENTS = [
-  // { date: '2026-09-05', title: 'Dashboard got a makeover', body: 'Polls, a news feed, and quick links live here now.' },
-];
-
-function renderAnnouncements() {
-  const container = document.querySelector('#dash-announcements');
-  if (!container) return;
-
-  if (ANNOUNCEMENTS.length === 0) {
-    container.innerHTML = '<p class="poll-empty">No announcements yet.</p>';
-    return;
-  }
-
-  const sorted = [...ANNOUNCEMENTS].sort((a, b) => (a.date < b.date ? 1 : -1));
-  container.innerHTML = sorted.slice(0, 5).map(a => `
-    <div class="announcement-item">
-      <div class="announcement-date">${escapeHtml(a.date)}</div>
-      <div class="announcement-title">${escapeHtml(a.title)}</div>
-      <div class="announcement-body">${escapeHtml(a.body)}</div>
-    </div>`).join('');
-}
 
 // ---------- Polls ----------
 // Poll questions live in the "Polls" sheet (edited by hand — see Code.gs).
@@ -5386,8 +5673,16 @@ const CURRENT_BUILD_VERSION = '2026-09-05.1';
 // internal build-order trivia. Real patch notes start fresh from here —
 // add new dated entries above this one as things actually ship.
 const CHANGELOG = [
-  { date: '2026-09-05', text: 'Dynasty HQ launched: live standings, full league history & all-time records, head-to-head records between any two managers, a trade history log, a rookie draft order calculator, the Prophecies predictions game, and this page — Polls, League News, and quick links to Slack/Sleeper.' },
+  { date: '2026-09-05', text: 'Dynasty HQ is live — standings and full league history, head-to-head grudge matches, a trade log that grades every deal in hindsight, a rookie draft order calculator, Prophecies predictions, automated League News, and Polls. Plus a first-visit walkthrough and this Changelog/quick-links page. More on the way.' },
 ];
+
+function changelogItemHtml(c, withDate = true) {
+  return `
+    <div class="changelog-item">
+      ${withDate ? `<div class="announcement-date">${escapeHtml(c.date)}</div>` : ''}
+      <div class="announcement-body">${escapeHtml(c.text)}</div>
+    </div>`;
+}
 
 function renderChangelog() {
   const container = document.querySelector('#changelog-list');
@@ -5396,20 +5691,28 @@ function renderChangelog() {
   const dated = CHANGELOG.filter(c => c.date !== 'earlier');
   const earlier = CHANGELOG.filter(c => c.date === 'earlier');
 
-  let html = dated.map(c => `
-    <div class="changelog-item">
-      <div class="announcement-date">${escapeHtml(c.date)}</div>
-      <div class="announcement-body">${escapeHtml(c.text)}</div>
-    </div>`).join('');
+  let html = dated.map(c => changelogItemHtml(c)).join('');
 
   if (earlier.length > 0) {
-    html += '<div class="changelog-group-label">Earlier</div>' + earlier.map(c => `
-      <div class="changelog-item">
-        <div class="announcement-body">${escapeHtml(c.text)}</div>
-      </div>`).join('');
+    html += '<div class="changelog-group-label">Earlier</div>' + earlier.map(c => changelogItemHtml(c, false)).join('');
   }
 
   container.innerHTML = html;
+}
+
+// Dashboard-card preview of the changelog above — most recent few dated
+// entries only, with a "See full changelog" link (in the dashboard HTML)
+// out to the full, nav-less Changelog tab for everything else. Replaces
+// the old "League News" card, which sat on an always-empty ANNOUNCEMENTS
+// array — this shows the same real content the Changelog tab always had.
+function renderChangelogPreview() {
+  const container = document.querySelector('#dash-changelog-preview');
+  if (!container) return;
+
+  const dated = CHANGELOG.filter(c => c.date !== 'earlier');
+  container.innerHTML = dated.length
+    ? dated.slice(0, 3).map(c => changelogItemHtml(c)).join('')
+    : '<p class="poll-empty">Nothing logged yet.</p>';
 }
 
 // One-time "what's new" banner — shown once per build bump, dismissible,
@@ -5468,6 +5771,399 @@ function checkForNewPollBanner() {
   dismissBtn.onclick = dismiss;
 
   banner.style.display = 'flex';
+}
+
+// ============================================================
+// LEAGUE NEWS — commissioner callouts + automated weekly reports
+// ------------------------------------------------------------
+// Talks to the same Apps Script Web App as Polls/Prophecies (action=news).
+// ?preview=1 on the URL also requests (and renders) draft callouts/reports,
+// through this exact same render path — true WYSIWYG for Joe to check a row
+// before flipping it to `published` in the sheet. Loaded once from
+// renderDashboard() (for the teaser) and re-rendered when the page itself is
+// opened, same lazy-ish pattern as Polls.
+// ============================================================
+let _leagueNews = { callouts: [], reports: [] };
+let _leagueNewsLoaded = false;
+
+function isPreviewMode() {
+  return new URLSearchParams(window.location.search).get('preview') === '1';
+}
+
+async function loadLeagueNews() {
+  try {
+    const preview = isPreviewMode() ? '&preview=1' : '';
+    const resp = await fetch(`${PROPHECY_CONFIG.APPS_SCRIPT_URL}?action=news${preview}`);
+    const data = await resp.json();
+    if (data.ok) {
+      _leagueNews = { callouts: data.callouts || [], reports: data.reports || [] };
+      _leagueNewsLoaded = true;
+    }
+  } catch (e) {
+    console.warn('Failed to load League News:', e);
+  }
+  renderLeagueNewsTeaser();
+  // If the League News page happens to already be the active one (e.g. a
+  // direct link/refresh), render it now too instead of waiting on a nav click.
+  if (document.getElementById('page-leaguenews')?.classList.contains('active')) {
+    renderLeagueNewsPage();
+  }
+}
+
+function playerAvatarUrl(playerId) {
+  return `https://sleepercdn.com/content/nfl/players/thumb/${playerId}.jpg`;
+}
+
+function renderLeagueNewsTeaser() {
+  const teaser = document.getElementById('league-news-teaser');
+  const sub = document.getElementById('league-news-teaser-sub');
+  if (!teaser || !sub) return;
+
+  const latestCallout = _leagueNews.callouts[0];
+  const latestReport = _leagueNews.reports[0];
+
+  if (!latestCallout && !latestReport) {
+    teaser.style.display = 'none';
+    return;
+  }
+
+  const parts = [];
+  if (latestCallout) parts.push(`"${latestCallout.title}"`);
+  if (latestReport) parts.push(`Week ${latestReport.week} recap is up`);
+  sub.textContent = parts.join(' · ');
+  teaser.style.display = 'flex';
+}
+
+// ---------- Weekly report card renderers ----------
+
+const POSITION_ORDER = ['QB', 'RB', 'WR', 'TE', 'K', 'DEF'];
+
+function playerCardHtml(entry, pos) {
+  if (!entry) {
+    return `<div class="player-card pos-${pos}"><span class="player-pos">${pos}</span><div class="player-meta">No qualifying player</div></div>`;
+  }
+  const initials = (entry.name || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+  return `
+    <div class="player-card pos-${pos}">
+      <span class="player-pos">${pos}</span>
+      <div class="player-avatar">
+        <img src="${playerAvatarUrl(entry.playerId)}" onerror="this.parentElement.textContent='${initials}'">
+      </div>
+      <div class="player-name">${escapeHtml(entry.name)}</div>
+      <div class="player-meta">${escapeHtml(entry.team || '')}${entry.opponent ? ' · ' + escapeHtml(entry.opponent) : ''}</div>
+      <div class="player-score">${fmt(entry.points)}</div>
+      <div class="player-manager">${escapeHtml(entry.manager)}</div>
+    </div>`;
+}
+
+function awardCardHtml(title, winnerHtml, detailHtml, danger) {
+  return `
+    <div class="award-card${danger ? ' danger' : ''}">
+      <div class="award-title">${escapeHtml(title)}</div>
+      <div class="award-winner">${winnerHtml}</div>
+      ${detailHtml ? `<div class="award-detail">${detailHtml}</div>` : ''}
+    </div>`;
+}
+
+function namesList(entries) {
+  return entries.map(e => escapeHtml(e.manager || e.team || '')).join(' & ');
+}
+
+function buildAwardCards(trophies) {
+  const cards = [];
+  const t = trophies || {};
+
+  if (t.highestScorers?.length) {
+    cards.push(awardCardHtml('Highest Scorer', namesList(t.highestScorers), `${fmt(t.highestScorers[0].points)} pts`));
+  }
+  if (t.lowestScorers?.length) {
+    cards.push(awardCardHtml('Lowest Scorer', namesList(t.lowestScorers), `${fmt(t.lowestScorers[0].points)} pts`, true));
+  }
+  if (t.highestPtsInLoss?.length) {
+    const e = t.highestPtsInLoss[0];
+    cards.push(awardCardHtml('Highest Pts in a Loss', namesList(t.highestPtsInLoss), `${fmt(e.points)} pts · lost to ${escapeHtml(e.lostTo)}`));
+  }
+  if (t.lowestPtsInWin?.length) {
+    const e = t.lowestPtsInWin[0];
+    cards.push(awardCardHtml('Lowest Pts in a Win', namesList(t.lowestPtsInWin), `${fmt(e.points)} pts · beat ${escapeHtml(e.beat)}`));
+  }
+  if (t.biggestBlowout?.length) {
+    const g = t.biggestBlowout[0];
+    cards.push(awardCardHtml('Biggest Blowout', `${escapeHtml(g.winner)} over ${escapeHtml(g.loser)}`, `${fmt(g.winnerPts)} - ${fmt(g.loserPts)} · margin of ${g.marginPct}%`));
+  }
+  if (t.narrowVictory?.length) {
+    const g = t.narrowVictory[0];
+    cards.push(awardCardHtml('Narrow Victory', `${escapeHtml(g.winner)} over ${escapeHtml(g.loser)}`, `${fmt(g.winnerPts)} - ${fmt(g.loserPts)} · margin of ${g.marginPct}%`));
+  }
+  if (t.mostEfficient?.length) {
+    const e = t.mostEfficient[0];
+    cards.push(awardCardHtml('Most Efficient Manager', namesList(t.mostEfficient), `${e.efficiency}% of possible ${fmt(e.optimal)} pts`));
+  }
+  if (t.leastEfficient?.length) {
+    const e = t.leastEfficient[0];
+    cards.push(awardCardHtml('Least Efficient Manager', namesList(t.leastEfficient), `${e.efficiency}% of possible ${fmt(e.optimal)} pts`, true));
+  }
+  if (t.streakWatch) {
+    const s = t.streakWatch;
+    cards.push(awardCardHtml('Streak Watch', `${escapeHtml(s.manager)} — ${s.length}-game ${s.type} streak`, s.type === 'win' ? 'Hottest team in the league right now' : 'Coldest team in the league right now', s.type === 'loss'));
+  }
+  if (t.closestToCutoff) {
+    const c = t.closestToCutoff;
+    cards.push(awardCardHtml('Closest to the Cutoff', `${escapeHtml(c.manager)} — first team out`, `${c.gamesBack} games back of ${escapeHtml(c.lastInManager)} for the final playoff spot`));
+  }
+
+  return cards.join('');
+}
+
+function playoffPictureHtml(picture) {
+  if (!picture) return '';
+  const col = (label, cls, rows) => `
+    <div class="playoff-picture-col ${cls}">
+      <div class="playoff-col-label">${label}</div>
+      ${rows.map(r => `<div class="playoff-team-row"><span>${escapeHtml(r.manager)}</span><span>${r.wins}-${r.losses} · ${fmt(r.pf)} pf</span></div>`).join('') || '<p class="poll-empty">—</p>'}
+    </div>`;
+  return `
+    <div class="weekly-report-section-label">Playoff Picture</div>
+    <div class="playoff-picture-grid">
+      ${col('In', 'in', picture.in)}
+      ${col('On the Bubble', 'bubble', picture.bubble)}
+      ${col('Out', 'out', picture.out)}
+    </div>`;
+}
+
+function powerRankingsHtml(power) {
+  if (!power || !power.rankings) return '';
+  const trendIcon = { up: '▲', down: '▼', same: '·', new: 'NEW' };
+  const rows = power.rankings.map(r => `
+    <div class="power-rank-row">
+      <span class="power-rank-num">${r.rank}</span>
+      <span class="power-rank-trend ${r.trend}">${trendIcon[r.trend] || ''}</span>
+      <span class="power-rank-team">${escapeHtml(r.manager)}</span>
+      <span class="power-rank-stats">${r.winPct}% · ${r.seasonPpg} ppg season · ${r.last3Ppg} ppg last 3</span>
+    </div>`).join('');
+  return `<div class="weekly-report-section-label">Power Rankings</div>${rows}`;
+}
+
+function weeklyReportHtml(report, isFirst) {
+  const t = report.trophies || {};
+  const pow = report.playersOfWeek || { started: {}, benched: {} };
+  const statusTag = report.status === 'draft' ? '<span class="callout-draft-tag">DRAFT</span>' : '';
+
+  const startedCards = POSITION_ORDER.map(pos => playerCardHtml(pow.started?.[pos], pos)).join('');
+  const benchedCards = POSITION_ORDER.map(pos => playerCardHtml(pow.benched?.[pos], pos)).join('');
+
+  return `
+    <details class="weekly-report-group" ${isFirst ? 'open' : ''}>
+      <summary class="weekly-report-summary">Week ${report.week} ${statusTag}</summary>
+
+      <div class="weekly-report-section-label">Players of the Week</div>
+      <div class="player-card-grid">${startedCards}</div>
+
+      <div class="weekly-report-section-label">Benchwarmers of the Week</div>
+      <div class="player-card-grid">${benchedCards}</div>
+
+      <div class="weekly-report-section-label">Weekly Trophies</div>
+      <div class="award-card-grid">${buildAwardCards(t)}</div>
+
+      ${playoffPictureHtml(report.playoffPicture)}
+      ${powerRankingsHtml(report.powerRankings)}
+    </details>`;
+}
+
+function calloutCardHtml(callout) {
+  const isDraft = callout.status === 'draft';
+  // Body renders as raw HTML by design — only Joe can ever write a row into
+  // this sheet, same trust level Code.gs/index.html already have. Title
+  // still gets escaped since it's rendered as plain text, not markup.
+  return `
+    <div class="callout-card${isDraft ? ' draft-preview' : ''}">
+      <div class="callout-title">${escapeHtml(callout.title)}${isDraft ? '<span class="callout-draft-tag">DRAFT</span>' : ''}</div>
+      <div class="callout-date">${escapeHtml(callout.date || '')}</div>
+      <div class="callout-body">${(callout.body || '').replace(/\n/g, '<br>')}</div>
+    </div>`;
+}
+
+function renderLeagueNewsPage() {
+  const calloutsEl = document.getElementById('league-news-callouts');
+  const reportsEl = document.getElementById('league-news-reports');
+  const subEl = document.getElementById('league-news-page-sub');
+  if (!calloutsEl || !reportsEl) return;
+
+  if (subEl) {
+    subEl.textContent = isPreviewMode()
+      ? 'Preview mode — showing draft callouts and reports too'
+      : 'Commissioner callouts and automated weekly breakdowns';
+  }
+
+  if (!_leagueNewsLoaded) {
+    calloutsEl.innerHTML = '<p class="poll-empty">Loading...</p>';
+    reportsEl.innerHTML = '<p class="poll-empty">Loading...</p>';
+    return;
+  }
+
+  calloutsEl.innerHTML = _leagueNews.callouts.length
+    ? _leagueNews.callouts.map(calloutCardHtml).join('')
+    : '<p class="poll-empty">Nothing posted yet.</p>';
+
+  reportsEl.innerHTML = _leagueNews.reports.length
+    ? _leagueNews.reports.map((r, i) => weeklyReportHtml(r, i === 0)).join('')
+    : '<p class="poll-empty">No weekly reports yet — check back after Week 1 wraps up.</p>';
+}
+
+// ---------- First-visit welcome walkthrough ----------
+// One-time on first visit, gated by a versioned localStorage key so future
+// content changes can re-show it to everyone without touching anyone's
+// other localStorage state (same convention as CURRENT_BUILD_VERSION /
+// dynastyhq_seen_version above). Always replayable via the "Take the tour"
+// link next to "See full changelog" on the Dashboard. See
+// claude/first-visit-walkthrough-plan.md for the full design rationale.
+const WELCOME_TOUR_KEY = 'dynastyhq_seen_welcome_v1';
+
+const WELCOME_TOUR_SCREENS = [
+  {
+    icon: '🏈',
+    title: 'Welcome to Dynasty HQ',
+    text: [
+      'Everything about our dynasty league, in one place — standings, history, trades, and more.',
+      "Here's a quick look around before you dive in.",
+    ],
+    navTargets: [],
+  },
+  {
+    icon: '📊',
+    title: 'Dashboard',
+    text: [
+      'Live standings, League News with weekly breakdowns, and polls you can vote in — all right here on the home tab.',
+    ],
+    navTargets: ['dashboard'],
+  },
+  {
+    icon: '🏆',
+    title: 'History',
+    text: [
+      'Full season-by-season history, all-time records, and the Trophy Case — league-wide and personal awards.',
+    ],
+    navTargets: ['history'],
+  },
+  {
+    icon: '⚔️',
+    title: 'Head-to-Head & Trades',
+    text: [
+      'H2H auto-surfaces your rivalries — who you own, who owns you.',
+      'Trades grades every deal in hindsight and hands out titles — Robber Baron, Fleece of the Year, and more.',
+    ],
+    navTargets: ['h2h', 'trades'],
+  },
+  {
+    icon: '🔮',
+    title: 'Prophecies',
+    text: [
+      'Make predictions, track your hit rate, and chase the Top Seer title.',
+    ],
+    navTargets: ['prophecies'],
+    // Closing note, not part of the Prophecies description — rendered in its
+    // own visually separated block (see renderWelcomeTourScreen) so it doesn't
+    // read as one more sentence about the Prophecies tab.
+    note: '🧭 Replay this tour anytime from the Dashboard, and catch up on everything shipped in the Changelog.',
+  },
+];
+
+let _welcomeTourIndex = 0;
+
+// Highlights (in the header nav bar, behind the modal's dark backdrop) the
+// tab(s) a tour screen is currently talking about — cleared and reapplied on
+// every screen change. Matches nav buttons the same way showPage() does:
+// by their onclick attribute rather than an id, since nav buttons don't
+// have one. A screen with no navTargets (the welcome screen) just clears.
+function applyTourNavGlow(navTargets) {
+  document.querySelectorAll('nav button.tour-glow-target').forEach(b => b.classList.remove('tour-glow-target'));
+  if (!navTargets || !navTargets.length) return;
+  document.querySelectorAll('nav button').forEach(btn => {
+    const onclickAttr = btn.getAttribute('onclick') || '';
+    if (navTargets.some(name => onclickAttr.includes(`showPage('${name}')`))) {
+      btn.classList.add('tour-glow-target');
+    }
+  });
+}
+
+function renderWelcomeTourScreen() {
+  const screen = WELCOME_TOUR_SCREENS[_welcomeTourIndex];
+  const body = document.querySelector('#welcome-modal-body');
+  if (!body || !screen) return;
+  body.innerHTML = `
+    <div class="welcome-modal-icon">${screen.icon}</div>
+    <div class="welcome-modal-title" id="welcome-modal-title-text">${escapeHtml(screen.title)}</div>
+    ${screen.text.map(t => `<p class="welcome-modal-text">${escapeHtml(t)}</p>`).join('')}
+    ${screen.note ? `<div class="welcome-modal-note">${escapeHtml(screen.note)}</div>` : ''}
+  `;
+
+  applyTourNavGlow(screen.navTargets);
+
+  const dots = document.querySelector('#welcome-modal-dots');
+  if (dots) {
+    dots.innerHTML = WELCOME_TOUR_SCREENS.map((_, i) =>
+      `<span class="dot${i === _welcomeTourIndex ? ' active' : ''}"></span>`
+    ).join('');
+  }
+
+  const backBtn = document.querySelector('#welcome-modal-back');
+  const nextBtn = document.querySelector('#welcome-modal-next');
+  const isFirst = _welcomeTourIndex === 0;
+  const isLast = _welcomeTourIndex === WELCOME_TOUR_SCREENS.length - 1;
+  if (backBtn) backBtn.disabled = isFirst;
+  if (nextBtn) nextBtn.textContent = isLast ? "Let's go" : 'Next';
+}
+
+// Replay entry point (the "🧭 Take the tour" dashboard link) as well as the
+// automatic first-visit trigger below both funnel through here.
+function openWelcomeWalkthrough() {
+  _welcomeTourIndex = 0;
+  const overlay = document.querySelector('#welcome-modal-overlay');
+  if (!overlay) return;
+  renderWelcomeTourScreen();
+  overlay.style.display = 'flex';
+}
+
+// Marks the tour seen the moment it's dismissed (X, backdrop click, Skip,
+// or finishing the last screen) — not on open — so a refresh mid-tour
+// shows it again rather than only ever once per browser regardless of
+// whether anyone actually got through it.
+function closeWelcomeWalkthrough() {
+  localStorage.setItem(WELCOME_TOUR_KEY, '1');
+  const overlay = document.querySelector('#welcome-modal-overlay');
+  if (overlay) overlay.style.display = 'none';
+  applyTourNavGlow([]); // clear any leftover nav glow from the last screen shown
+}
+
+// Wired up and, if unseen, shown immediately at script load — independent
+// of league data loading (loadAllData can take a moment on a cold cache),
+// and ahead of initWhatsNewBanner() below so a first-time visitor gets
+// oriented before being told what recently changed. The modal's z-index
+// sits above #loading-screen, so it's visible right on top of the loading
+// spinner rather than waiting for that to clear first.
+function initWelcomeWalkthrough() {
+  document.querySelector('#welcome-modal-skip').onclick = closeWelcomeWalkthrough;
+  document.querySelector('#welcome-modal-next').onclick = () => {
+    if (_welcomeTourIndex >= WELCOME_TOUR_SCREENS.length - 1) {
+      closeWelcomeWalkthrough();
+    } else {
+      _welcomeTourIndex++;
+      renderWelcomeTourScreen();
+    }
+  };
+  document.querySelector('#welcome-modal-back').onclick = () => {
+    if (_welcomeTourIndex > 0) {
+      _welcomeTourIndex--;
+      renderWelcomeTourScreen();
+    }
+  };
+  document.querySelector('#welcome-modal-overlay').addEventListener('click', (e) => {
+    if (e.target.id === 'welcome-modal-overlay') closeWelcomeWalkthrough();
+  });
+
+  if (!localStorage.getItem(WELCOME_TOUR_KEY)) {
+    openWelcomeWalkthrough();
+  }
 }
 
 // ============================================================
@@ -5533,6 +6229,7 @@ async function init() {
 })();
 
 init();
+initWelcomeWalkthrough();
 initWhatsNewBanner();
 </script>
 </body>
