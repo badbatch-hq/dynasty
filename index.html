@@ -726,15 +726,16 @@
   }
 
   /* The normal case is exactly 5 title cards: 3 volume-based ones (Day
-     Trader/Diamond Hands/Frequent Flyer) then 2 grading-based ones (Fleece
-     of the Year/Buyer's Remorse) — see renderRobberBaron's push order. Lay
-     those out 3-over-2, brick-style, with the bottom row offset into the
-     gaps of the top row instead of stacking straight underneath — gives the
-     bottom two (which tend to carry longer text, like Fleece's deal recap)
-     their own breathing room instead of being squeezed into a plain grid
-     cell. Only applied when there are exactly 5 (see the JS toggling this
-     class) — anything else falls back to the plain wrapping grid above.
-     Skipped below 720px, where everything's one column anyway. */
+     Trader/Diamond Hands/Frequent Flyer) then 2 grading-based ones (Biggest
+     Fleece/Buyer's Remorse) — see renderRobberBaron's push order. Lay those
+     out 3-over-2: top row 3-across (2 of 6 columns each), bottom row
+     2-across, each spanning 3 of 6 columns so together they reach the same
+     left/right edges as the row above instead of sitting inset in the
+     middle — per Joe, the previous offset/brick version read as the bottom
+     two being narrower than the top three, not just visually staggered.
+     Only applied when there are exactly 5 (see the JS toggling this class)
+     — anything else falls back to the plain wrapping grid above. Skipped
+     below 720px, where everything's one column anyway. */
   @media (min-width: 720px) {
     .trade-titles-grid.trade-titles-grid-staggered {
       grid-template-columns: repeat(6, 1fr);
@@ -742,8 +743,8 @@
     .trade-titles-grid-staggered > *:nth-child(1) { grid-column: 1 / 3; }
     .trade-titles-grid-staggered > *:nth-child(2) { grid-column: 3 / 5; }
     .trade-titles-grid-staggered > *:nth-child(3) { grid-column: 5 / 7; }
-    .trade-titles-grid-staggered > *:nth-child(4) { grid-column: 2 / 4; }
-    .trade-titles-grid-staggered > *:nth-child(5) { grid-column: 4 / 6; }
+    .trade-titles-grid-staggered > *:nth-child(4) { grid-column: 1 / 4; }
+    .trade-titles-grid-staggered > *:nth-child(5) { grid-column: 4 / 7; }
   }
 
   .robber-baron-banner.banner-compact {
@@ -1722,6 +1723,24 @@
     thead th { padding: 6px 8px; font-size: 9px; }
     tbody td { padding: 9px 8px; font-size: 12px; }
 
+    /* Standings table only: freeze the Team column while scrolling
+       horizontally, so whichever team a far-right column (Streak,
+       Commissioner's Coefficient) belongs to is never lost off the left
+       edge. Solid background is required (not the translucent scroll-hint
+       treatment above) since this cell needs to fully occlude every column
+       scrolling underneath it, not just hint at more content. Only Team is
+       frozen, not "#" — pinning two columns needs a second, exactly-matched
+       left offset for the rank column's width, which is fragile against
+       font/padding changes; Team alone already identifies the row. */
+    .standings-table .standings-col-team {
+      position: sticky;
+      left: 0;
+      z-index: 2;
+      background: var(--surface);
+      box-shadow: 4px 0 6px -4px rgba(0, 0, 0, 0.5);
+    }
+    .standings-table thead .standings-col-team { z-index: 3; }
+
     .rank-num { font-size: 15px; width: 28px; }
     .avatar { width: 24px; height: 24px; font-size: 12px; margin-right: 6px; }
 
@@ -1924,7 +1943,7 @@
           <thead>
             <tr>
               <th>#</th>
-              <th>Team</th>
+              <th class="standings-col-team">Team</th>
               <th class="standings-col-manager">Manager</th>
               <th>W</th>
               <th>L</th>
@@ -3745,7 +3764,7 @@ function renderDashboard() {
       else if (place === 3) badge = '<span class="badge badge-blue">🥉</span>';
       return `<tr>
         <td class="rank-num ${i < 3 ? 'top3' : ''}">${i + 1}</td>
-        <td>${avatarEl(m.avatar, m.display_name)}<span class="team-name">${m.team_name}</span>${badge ? ` ${badge}` : ''}</td>
+        <td class="standings-col-team">${avatarEl(m.avatar, m.display_name)}<span class="team-name">${m.team_name}</span>${badge ? ` ${badge}` : ''}</td>
         <td class="standings-col-manager" style="color:var(--muted);font-size:12px;">${m.display_name}</td>
         <td class="win">${w}</td>
         <td class="loss">${l}</td>
@@ -3786,7 +3805,7 @@ function renderDashboard() {
 
     return `<tr>
       <td class="rank-num ${rank <= 3 ? 'top3' : ''}">${rank}</td>
-      <td>${avatarEl(m.avatar, m.display_name)}<span class="team-name">${m.team_name}</span></td>
+      <td class="standings-col-team">${avatarEl(m.avatar, m.display_name)}<span class="team-name">${m.team_name}</span></td>
       <td class="standings-col-manager" style="color:var(--muted);font-size:12px;">${m.display_name}</td>
       <td class="win">${w}</td>
       <td class="loss">${l}</td>
