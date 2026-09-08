@@ -1185,6 +1185,23 @@ function generateWeeklyReport(weekOverride) {
     marginPct: Math.round(g.marginPct * 10) / 10,
   }));
 
+  // Shootout / Dud of the Week — same idea as the Trophy Case's season-long
+  // "Shootout of the Century"/"Dud of the Century", scoped to just this
+  // week's games. Reuses the same `games` array as the blowout/narrow-
+  // victory trophies above (no new fetches), just ranked by combined score
+  // instead of margin. Added 2026-09-08, per Joe, to fill out the Weekly
+  // Trophies grid to an even 12 cards (was 10, leaving an unbalanced last row).
+  const shootoutOfWeek = withEpsilonMax(games, g => g.winnerPts + g.loserPts).map(g => ({
+    winner: mgrName(g.winnerRosterId), loser: mgrName(g.loserRosterId),
+    winnerPts: Math.round(g.winnerPts * 100) / 100, loserPts: Math.round(g.loserPts * 100) / 100,
+    totalPts: Math.round((g.winnerPts + g.loserPts) * 100) / 100,
+  }));
+  const dudOfWeek = withEpsilonMin(games, g => g.winnerPts + g.loserPts).map(g => ({
+    winner: mgrName(g.winnerRosterId), loser: mgrName(g.loserRosterId),
+    winnerPts: Math.round(g.winnerPts * 100) / 100, loserPts: Math.round(g.loserPts * 100) / 100,
+    totalPts: Math.round((g.winnerPts + g.loserPts) * 100) / 100,
+  }));
+
   const mostEfficient = withEpsilonMax(allSides, s => s.efficiency).map(s => ({ ...sideTag(s), efficiency: Math.round(s.efficiency * 10) / 10, optimal: Math.round(s.optimal * 100) / 100 }));
   const leastEfficient = withEpsilonMin(allSides, s => s.efficiency).map(s => ({ ...sideTag(s), efficiency: Math.round(s.efficiency * 10) / 10, optimal: Math.round(s.optimal * 100) / 100 }));
 
@@ -1280,8 +1297,8 @@ function generateWeeklyReport(weekOverride) {
 
   const trophies = {
     highestScorers, lowestScorers, highestPtsInLoss, lowestPtsInWin,
-    biggestBlowout, narrowVictory, mostEfficient, leastEfficient,
-    streakWatch, closestToCutoff,
+    biggestBlowout, narrowVictory, shootoutOfWeek, dudOfWeek,
+    mostEfficient, leastEfficient, streakWatch, closestToCutoff,
   };
 
   // ---- Playoff picture (Week 5+) ----

@@ -5842,13 +5842,21 @@ function playerCardHtml(entry, pos) {
   if (!entry) {
     return `<div class="player-card pos-${pos}"><span class="player-pos">${pos}</span><div class="player-meta">No qualifying player</div></div>`;
   }
-  const initials = (entry.name || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+  // A team defense isn't a real player — Sleeper's player-thumb CDN has no
+  // photo for a team code like "DEN", so the image always fails there, and
+  // falling back to name-initials turned "Broncos D/ST" into "BD" instead of
+  // a real NFL abbreviation. Skip the photo attempt for DEF entirely and
+  // show the team code (already on the entry as `.team`) instead.
+  const avatarInner = pos === 'DEF'
+    ? escapeHtml(entry.team || entry.playerId || pos)
+    : (() => {
+        const initials = (entry.name || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+        return `<img src="${playerAvatarUrl(entry.playerId)}" onerror="this.parentElement.textContent='${initials}'">`;
+      })();
   return `
     <div class="player-card pos-${pos}">
       <span class="player-pos">${pos}</span>
-      <div class="player-avatar">
-        <img src="${playerAvatarUrl(entry.playerId)}" onerror="this.parentElement.textContent='${initials}'">
-      </div>
+      <div class="player-avatar">${avatarInner}</div>
       <div class="player-name">${escapeHtml(entry.name)}</div>
       <div class="player-meta">${escapeHtml(entry.team || '')}${entry.opponent ? ' · ' + escapeHtml(entry.opponent) : ''}</div>
       <div class="player-score">${fmt(entry.points)}</div>
@@ -5894,6 +5902,14 @@ function buildAwardCards(trophies) {
   if (t.narrowVictory?.length) {
     const g = t.narrowVictory[0];
     cards.push(awardCardHtml('Narrow Victory', `${escapeHtml(g.winner)} over ${escapeHtml(g.loser)}`, `${fmt(g.winnerPts)} - ${fmt(g.loserPts)} · margin of ${g.marginPct}%`));
+  }
+  if (t.shootoutOfWeek?.length) {
+    const g = t.shootoutOfWeek[0];
+    cards.push(awardCardHtml('Shootout of the Week', `${escapeHtml(g.winner)} vs. ${escapeHtml(g.loser)}`, `${fmt(g.totalPts)} combined pts (${fmt(g.winnerPts)} - ${fmt(g.loserPts)})`));
+  }
+  if (t.dudOfWeek?.length) {
+    const g = t.dudOfWeek[0];
+    cards.push(awardCardHtml('Dud of the Week', `${escapeHtml(g.winner)} vs. ${escapeHtml(g.loser)}`, `${fmt(g.totalPts)} combined pts (${fmt(g.winnerPts)} - ${fmt(g.loserPts)})`, true));
   }
   if (t.mostEfficient?.length) {
     const e = t.mostEfficient[0];

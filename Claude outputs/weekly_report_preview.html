@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dynasty HQ — Weekly Report preview</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c10;
+    --surface: #111318;
+    --surface2: #181c24;
+    --border: #1e2330;
+    --accent: #c8a84b;
+    --accent2: #4b8ec8;
+    --danger: #c84b4b;
+    --success: #4bc87a;
+    --text: #e8eaf0;
+    --muted: #5a6070;
+    --dim: #2a2f3d;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    min-height: 100vh;
+  }
+
+  main {
+    position: relative;
+    z-index: 1;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 32px 24px 64px;
+  }
+
+  /* Mockup banner — this is the one addition not in the live app, so it's
+     obvious at a glance that this page is a preview, not real data. */
+  .mockup-banner {
+    background: rgba(200,168,75,0.12);
+    border: 1px solid rgba(200,168,75,0.4);
+    border-radius: 10px;
+    padding: 14px 18px;
+    margin-bottom: 24px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text);
+  }
+  .mockup-banner b { color: var(--accent); }
+
+  .page-header { margin-bottom: 28px; }
+  .page-header h1 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 42px;
+    letter-spacing: 4px;
+    color: var(--text);
+    line-height: 1;
+  }
+  .page-header p { color: var(--muted); font-size: 13px; margin-top: 6px; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+  }
+  .card-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 20px;
+    letter-spacing: 1.5px;
+    color: var(--text);
+    margin-bottom: 16px;
+  }
+
+  .poll-empty { color: var(--muted); font-size: 13px; }
+
+  /* Position color coding, shared by player cards below */
+  .pos-QB  { --pos-color: #c84b4b; }
+  .pos-RB  { --pos-color: #4bc87a; }
+  .pos-WR  { --pos-color: #4b8ec8; }
+  .pos-TE  { --pos-color: #c8a84b; }
+  .pos-K   { --pos-color: #a05fd6; }
+  .pos-DEF { --pos-color: #5a6070; }
+
+  .player-card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .player-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-top: 3px solid var(--pos-color, var(--accent));
+    border-radius: 10px;
+    padding: 14px;
+    text-align: center;
+  }
+
+  .player-card .player-pos {
+    display: inline-block;
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: var(--pos-color, var(--accent));
+    border: 1px solid var(--pos-color, var(--accent));
+    border-radius: 4px;
+    padding: 1px 6px;
+    margin-bottom: 8px;
+  }
+
+  .player-card .player-avatar {
+    width: 56px; height: 56px; border-radius: 50%;
+    background: var(--dim);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Bebas Neue', sans-serif; font-size: 20px; color: var(--muted);
+    margin: 0 auto 8px;
+    overflow: hidden;
+  }
+
+  .player-card .player-avatar img { width: 100%; height: 100%; object-fit: cover; }
+  .player-card .player-name { font-weight: 600; font-size: 13px; margin-bottom: 2px; }
+  .player-card .player-meta { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+  .player-card .player-score { font-family: 'Bebas Neue', sans-serif; font-size: 26px; color: var(--text); }
+  .player-card .player-manager { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+  .award-card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .award-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+
+  .award-card .award-title { font-family: 'Bebas Neue', sans-serif; font-size: 14px; letter-spacing: 1px; color: var(--accent); margin-bottom: 4px; }
+  .award-card .award-winner { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
+  .award-card .award-detail { font-size: 11px; color: var(--muted); font-family: 'DM Mono', monospace; }
+  .award-card.danger { border-color: rgba(200,75,75,0.3); background: rgba(200,75,75,0.05); }
+  .award-card.danger .award-title { color: var(--danger); }
+
+  .playoff-picture-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 20px; }
+  .playoff-picture-col .playoff-col-label { font-family: 'Bebas Neue', sans-serif; letter-spacing: 1px; font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+  .playoff-picture-col.in .playoff-col-label { color: var(--success); }
+  .playoff-picture-col.bubble .playoff-col-label { color: var(--accent); }
+  .playoff-picture-col.out .playoff-col-label { color: var(--muted); }
+  .playoff-team-row { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+  .playoff-team-row:last-child { border-bottom: none; }
+
+  .power-rank-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .power-rank-row:last-child { border-bottom: none; }
+  .power-rank-num { font-family: 'Bebas Neue', sans-serif; font-size: 18px; color: var(--accent); width: 24px; }
+  .power-rank-trend { width: 20px; text-align: center; }
+  .power-rank-trend.up { color: var(--success); }
+  .power-rank-trend.down { color: var(--danger); }
+  .power-rank-trend.same { color: var(--muted); }
+  .power-rank-trend.new { color: var(--accent2); font-size: 10px; }
+  .power-rank-team { flex: 1; }
+  .power-rank-stats { color: var(--muted); font-size: 11px; font-family: 'DM Mono', monospace; }
+
+  .callout-draft-tag { display: inline-block; font-size: 10px; letter-spacing: 0.5px; color: var(--accent2); border: 1px solid var(--accent2); border-radius: 4px; padding: 1px 6px; margin-left: 8px; vertical-align: middle; }
+
+  .weekly-report-summary {
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 18px;
+    letter-spacing: 1.5px;
+    padding: 12px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 12px;
+  }
+  .weekly-report-summary::-webkit-details-marker { display: none; }
+  .weekly-report-group { margin-bottom: 20px; }
+  .weekly-report-section-label { font-family: 'Bebas Neue', sans-serif; font-size: 14px; letter-spacing: 1px; color: var(--muted); margin: 16px 0 10px; }
+
+  @media (max-width: 768px) {
+    .playoff-picture-grid { grid-template-columns: 1fr; gap: 12px; }
+    .page-header h1 { font-size: 30px; letter-spacing: 2px; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <div class="mockup-banner">
+    <b>MOCKUP — not a real week.</b> This is a static preview so you can see the layout before turning weekly reports on. Three team names (Joe-B-Wan Kenobi, Bill and Tez, Friendly Neighborhood Sith) are real teams from your league; everything else — the rest of the team names, every stat, every player/points pairing — is made up to exercise the full layout. Nothing here was pulled from Sleeper.
+  </div>
+
+  <div class="page-header">
+    <h1>League News</h1>
+    <p>Commissioner callouts and automated weekly breakdowns</p>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Weekly Reports</div>
+    <div id="league-news-reports">
+
+    <details class="weekly-report-group" open>
+      <summary class="weekly-report-summary">Week 9 <span class="callout-draft-tag">DRAFT</span></summary>
+
+      <div class="weekly-report-section-label">Players of the Week</div>
+      <div class="player-card-grid">
+    <div class="player-card pos-QB">
+      <span class="player-pos">QB</span>
+      <div class="player-avatar"><img src="https://sleepercdn.com/content/nfl/players/thumb/4046.jpg" onerror="this.parentElement.textContent='JA'"></div>
+      <div class="player-name">Josh Allen</div>
+      <div class="player-meta">BUF · @ MIA</div>
+      <div class="player-score">34.60</div>
+      <div class="player-manager">Joe-B-Wan Kenobi</div>
+    </div>
+    <div class="player-card pos-RB">
+      <span class="player-pos">RB</span>
+      <div class="player-avatar"><img src="https://sleepercdn.com/content/nfl/players/thumb/7564.jpg" onerror="this.parentElement.textContent='JC'"></div>
+      <div class="player-name">Ja&#39;Marr Chase</div>
+      <div class="player-meta">CIN · vs BAL</div>
+      <div class="player-score">41.20</div>
+      <div class="player-manager">Friendly Neighborhood Sith</div>
+    </div>
+    <div class="player-card pos-WR">
+      <span class="player-pos">WR</span>
+      <div class="player-avatar"><img src="https://sleepercdn.com/content/nfl/players/thumb/6786.jpg" onerror="this.parentElement.textContent='CL'"></div>
+      <div class="player-name">CeeDee Lamb</div>
+      <div class="player-meta">DAL · vs PHI</div>
+      <div class="player-score">29.80</div>
+      <div class="player-manager">Bill and Tez</div>
+    </div>
+    <div class="player-card pos-TE">
+      <span class="player-pos">TE</span>
+      <div class="player-avatar"><img src="https://sleepercdn.com/content/nfl/players/thumb/11624.jpg" onerror="this.parentElement.textContent='BB'"></div>
+      <div class="player-name">Brock Bowers</div>
+      <div class="player-meta">LV · @ DEN</div>
+      <div class="player-score">22.40</div>
+      <div class="player-manager">The Gridiron Gremlins</div>
+    </div>
+    <div class="player-card pos-K">
+      <span class="player-pos">K</span>
+      <div class="player-avatar"><img src="https://sleepercdn.com/content/nfl/players/thumb/5045.jpg" onerror="this.parentElement.textContent='HB'"></div>
+      <div class="player-name">Harrison Butker</div>
+      <div class="player-meta">KC · vs LAC</div>
+      <div class="player-score">16.00</div>
+      <div class="player-manager">Zero Dark Thirty</div>
+    </div>
+    <div class="player-card pos-DEF">
+      <span class="player-pos">DEF</span>
+      <div class="player-avatar">DEN</div>
+      <div class="player-name">Broncos D/ST</div>
+      <div class="player-meta">DEN · vs LV</div>
+      <div class="player-score">21.00</div>
+      <div class="player-manager">Sacko Prevention Unit</div>
+    </div></div>
+
+      <div class="weekly-report-section-label">Benchwarmers of the Week</div>
+      <div class="player-card-grid">
+    <div class="player-card pos-QB">
+      <span class="player-pos">QB</span>
+      <div class="player-avatar"><img src="https://sleepercdn.com/content/nfl/players/thumb/11566.jpg" onerror="this.parentElement.textContent='JD'"></div>
+      <div class="player-name">Jayden Daniels</div>
+      <div class="player-meta">WAS · vs PHI</div>
+      <div class="player-score">27.10</div>
+      <div class="player-manager">The Waiver Wire Wizards</div>
+    </div>
+    <div class="player-card pos-RB">
+      <span class="player-pos">RB</span>
+      <div class="player-avatar"><img src="https://sleepercdn.com/content/nfl/players/thumb/8146.jpg" onerror="this.parentElement.textContent='JC'"></div>
+      <div class="player-name">James Cook</div>
+      <div class="player-meta">BUF · @ MIA</div>
+      <div class="player-score">24.30</div>
+      <div class="player-manager">Friendly Neighborhood Sith</div>
+    </div>
+    <div class="player-card pos-WR">
+      <span class="player-pos">WR</span>
+      <div class="player-avatar"><img src="https://sleepercdn.com/content/nfl/players/thumb/6794.jpg" onerror="this.parentElement.textContent='DM'"></div>
+      <div class="player-name">DK Metcalf</div>
+      <div class="player-meta">PIT · vs CIN</div>
+      <div class="player-score">19.60</div>
+      <div class="player-manager">Bill and Tez</div>
+    </div>
+    <div class="player-card pos-TE">
+      <span class="player-pos">TE</span>
+      <div class="player-avatar"><img src="https://sleepercdn.com/content/nfl/players/thumb/8151.jpg" onerror="this.parentElement.textContent='TM'"></div>
+      <div class="player-name">Trey McBride</div>
+      <div class="player-meta">ARI · @ LAR</div>
+      <div class="player-score">17.20</div>
+      <div class="player-manager">Joe-B-Wan Kenobi</div>
+    </div>
+    <div class="player-card pos-K">
+      <span class="player-pos">K</span>
+      <div class="player-avatar"><img src="https://sleepercdn.com/content/nfl/players/thumb/9214.jpg" onerror="this.parentElement.textContent='BA'"></div>
+      <div class="player-name">Brandon Aubrey</div>
+      <div class="player-meta">DAL · vs PHI</div>
+      <div class="player-score">13.00</div>
+      <div class="player-manager">The Gridiron Gremlins</div>
+    </div>
+    <div class="player-card pos-DEF">
+      <span class="player-pos">DEF</span>
+      <div class="player-avatar">MIN</div>
+      <div class="player-name">Vikings D/ST</div>
+      <div class="player-meta">MIN · vs CHI</div>
+      <div class="player-score">14.00</div>
+      <div class="player-manager">Zero Dark Thirty</div>
+    </div></div>
+
+      <div class="weekly-report-section-label">Weekly Trophies</div>
+      <div class="award-card-grid">
+    <div class="award-card">
+      <div class="award-title">Highest Scorer</div>
+      <div class="award-winner">Friendly Neighborhood Sith</div>
+      <div class="award-detail">178.42 pts</div>
+    </div>
+    <div class="award-card danger">
+      <div class="award-title">Lowest Scorer</div>
+      <div class="award-winner">The Waiver Wire Wizards</div>
+      <div class="award-detail">84.16 pts</div>
+    </div>
+    <div class="award-card">
+      <div class="award-title">Highest Pts in a Loss</div>
+      <div class="award-winner">Sacko Prevention Unit</div>
+      <div class="award-detail">141.88 pts · lost to Joe-B-Wan Kenobi</div>
+    </div>
+    <div class="award-card">
+      <div class="award-title">Lowest Pts in a Win</div>
+      <div class="award-winner">Bill and Tez</div>
+      <div class="award-detail">96.40 pts · beat Couch Potato Kings</div>
+    </div>
+    <div class="award-card">
+      <div class="award-title">Biggest Blowout</div>
+      <div class="award-winner">Friendly Neighborhood Sith over The Waiver Wire Wizards</div>
+      <div class="award-detail">178.42 - 84.16 · margin of 71.6%</div>
+    </div>
+    <div class="award-card">
+      <div class="award-title">Narrow Victory</div>
+      <div class="award-winner">Bill and Tez over Couch Potato Kings</div>
+      <div class="award-detail">96.40 - 95.90 · margin of 0.5%</div>
+    </div>
+    <div class="award-card">
+      <div class="award-title">Shootout of the Week</div>
+      <div class="award-winner">Friendly Neighborhood Sith vs. The Waiver Wire Wizards</div>
+      <div class="award-detail">262.58 combined pts (178.42 - 84.16)</div>
+    </div>
+    <div class="award-card danger">
+      <div class="award-title">Dud of the Week</div>
+      <div class="award-winner">Bill and Tez vs. Couch Potato Kings</div>
+      <div class="award-detail">192.30 combined pts (96.40 - 95.90)</div>
+    </div>
+    <div class="award-card">
+      <div class="award-title">Most Efficient Manager</div>
+      <div class="award-winner">The Gridiron Gremlins</div>
+      <div class="award-detail">98.4% of possible 134.70 pts</div>
+    </div>
+    <div class="award-card danger">
+      <div class="award-title">Least Efficient Manager</div>
+      <div class="award-winner">Zero Dark Thirty</div>
+      <div class="award-detail">61.3% of possible 143.90 pts</div>
+    </div>
+    <div class="award-card">
+      <div class="award-title">Streak Watch</div>
+      <div class="award-winner">Joe-B-Wan Kenobi — 4-game win streak</div>
+      <div class="award-detail">Hottest team in the league right now</div>
+    </div>
+    <div class="award-card">
+      <div class="award-title">Closest to the Cutoff</div>
+      <div class="award-winner">The Gridiron Gremlins — first team out</div>
+      <div class="award-detail">0.5 games back of Zero Dark Thirty for the final playoff spot</div>
+    </div></div>
+
+      
+    <div class="weekly-report-section-label">Playoff Picture</div>
+    <div class="playoff-picture-grid">
+      
+    <div class="playoff-picture-col in">
+      <div class="playoff-col-label">In</div>
+      <div class="playoff-team-row"><span>Friendly Neighborhood Sith</span><span>7-2 · 1122.40 pf</span></div><div class="playoff-team-row"><span>Joe-B-Wan Kenobi</span><span>7-2 · 1098.70 pf</span></div><div class="playoff-team-row"><span>Bill and Tez</span><span>6-3 · 1054.10 pf</span></div><div class="playoff-team-row"><span>Sacko Prevention Unit</span><span>6-3 · 1041.60 pf</span></div><div class="playoff-team-row"><span>Couch Potato Kings</span><span>5-4 · 1002.90 pf</span></div><div class="playoff-team-row"><span>Zero Dark Thirty</span><span>5-4 · 986.30 pf</span></div>
+    </div>
+      
+    <div class="playoff-picture-col bubble">
+      <div class="playoff-col-label">On the Bubble</div>
+      <div class="playoff-team-row"><span>The Gridiron Gremlins</span><span>4-5 · 981.00 pf</span></div><div class="playoff-team-row"><span>Blitzed &amp; Confused</span><span>4-5 · 954.80 pf</span></div>
+    </div>
+      
+    <div class="playoff-picture-col out">
+      <div class="playoff-col-label">Out</div>
+      <div class="playoff-team-row"><span>Renegade Rushers</span><span>4-5 · 930.20 pf</span></div><div class="playoff-team-row"><span>Hail Mary Full of Grace</span><span>3-6 · 912.50 pf</span></div><div class="playoff-team-row"><span>Last Place Larry</span><span>2-7 · 875.90 pf</span></div><div class="playoff-team-row"><span>The Waiver Wire Wizards</span><span>1-8 · 840.10 pf</span></div>
+    </div>
+    </div>
+      <div class="weekly-report-section-label">Power Rankings</div>
+    <div class="power-rank-row">
+      <span class="power-rank-num">1</span>
+      <span class="power-rank-trend same">·</span>
+      <span class="power-rank-team">Friendly Neighborhood Sith</span>
+      <span class="power-rank-stats">77.8% · 124.7 ppg season · 138.9 ppg last 3</span>
+    </div>
+    <div class="power-rank-row">
+      <span class="power-rank-num">2</span>
+      <span class="power-rank-trend up">▲</span>
+      <span class="power-rank-team">Joe-B-Wan Kenobi</span>
+      <span class="power-rank-stats">77.8% · 119.2 ppg season · 129.4 ppg last 3</span>
+    </div>
+    <div class="power-rank-row">
+      <span class="power-rank-num">3</span>
+      <span class="power-rank-trend down">▼</span>
+      <span class="power-rank-team">Bill and Tez</span>
+      <span class="power-rank-stats">66.7% · 116.8 ppg season · 110.2 ppg last 3</span>
+    </div>
+    <div class="power-rank-row">
+      <span class="power-rank-num">4</span>
+      <span class="power-rank-trend same">·</span>
+      <span class="power-rank-team">Sacko Prevention Unit</span>
+      <span class="power-rank-stats">66.7% · 114 ppg season · 118.6 ppg last 3</span>
+    </div>
+    <div class="power-rank-row">
+      <span class="power-rank-num">5</span>
+      <span class="power-rank-trend up">▲</span>
+      <span class="power-rank-team">Couch Potato Kings</span>
+      <span class="power-rank-stats">55.6% · 111.4 ppg season · 121 ppg last 3</span>
+    </div>
+    <div class="power-rank-row">
+      <span class="power-rank-num">6</span>
+      <span class="power-rank-trend new">NEW</span>
+      <span class="power-rank-team">Zero Dark Thirty</span>
+      <span class="power-rank-stats">55.6% · 109.6 ppg season · 98.4 ppg last 3</span>
+    </div>
+    </details>
+    </div>
+  </div>
+</main>
+</body>
+</html>
