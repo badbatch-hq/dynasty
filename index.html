@@ -3653,10 +3653,20 @@ function renderDashboard() {
   titleLink.querySelector('.dash-title-text').textContent = state.league.name;
   titleLink.href = LINKOUTS.sleeperUrl;
 
-  // Detect offseason: no scored weeks yet for the current season
+  // Detect offseason: has the current season actually started yet?
+  // Deliberately keyed off state.league.settings.last_scored_leg directly
+  // (live, ticks up as soon as the week's first stats come in — see the
+  // buildAllMatchups() note above) rather than state.allMatchups, which is
+  // intentionally stricter and excludes the in-progress week entirely so
+  // Trophy Case/streaks/Coefficient never see a live partial score. That
+  // strictness is correct for "is this week's data final" but wrong for
+  // "should the dashboard still be showing last season" — Joe's ask: once
+  // the season kicks off, the dashboard should flip to live current
+  // standings and a real week number immediately, not sit on last season's
+  // final standings and "Off" for the entire first week.
   const currentSeason = state.league.season || KNOWN_LATEST_SEASON;
-  const currentSeasonMatchups = state.allMatchups.filter(m => m.season === currentSeason);
-  const isOffseason = currentSeasonMatchups.length === 0;
+  const currentWeek = state.league.settings?.last_scored_leg || 0;
+  const isOffseason = currentWeek === 0;
 
   // Determine the last completed season (for offseason fallback)
   const lastCompletedSeason = [...SEASONS].reverse().find(s =>
@@ -3664,9 +3674,7 @@ function renderDashboard() {
   );
 
   const displaySeason = isOffseason ? (lastCompletedSeason || currentSeason) : currentSeason;
-  const lastWeek = isOffseason
-    ? '—'
-    : (state.league.settings?.last_scored_leg || '—');
+  const lastWeek = isOffseason ? '—' : currentWeek;
 
   document.getElementById('stat-season').textContent = currentSeason;
   document.getElementById('stat-week').textContent = isOffseason ? 'Off' : lastWeek;
@@ -3727,10 +3735,8 @@ function renderDashboard() {
       const w = cs ? cs.wins : (r.settings?.wins || 0);
       const l = cs ? cs.losses : (r.settings?.losses || 0);
       const pf = cs ? cs.pf.toFixed(2) : ((r.settings?.fpts || 0) + (r.settings?.fpts_decimal || 0) / 100).toFixed(2);
-      // Points against — previously hardcoded to "—" here (a real bug, this
-      // column was simply never populated on the offseason/final-standings
-      // view). Uses the same computed-fallback-for-wiped-data pattern as PF
-      // just above; computeSeasonStandings() now tracks `pa` too (see there).
+      // Points against — computed the same way as PF just above;
+      // computeSeasonStandings() tracks `pa` for the wiped-data fallback path.
       const pa = cs ? cs.pa.toFixed(2) : ((r.settings?.ppts || 0) + (r.settings?.ppts_decimal || 0) / 100).toFixed(2);
       const place = placements[r.roster_id];
       let badge = '';
