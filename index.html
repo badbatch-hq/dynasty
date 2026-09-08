@@ -247,6 +247,11 @@
 
   .stat-pill .value.gold { color: var(--accent); }
   .stat-pill .value.blue { color: var(--accent2); }
+  /* Team names run longer than the other stat values (a number/word) —
+     scale proportionally smaller at each breakpoint rather than a fixed
+     px override, so it doesn't read as oddly tiny next to the others on
+     desktop while looking fine on the already-smaller mobile size. */
+  .stat-pill .value.stat-value-tight { font-size: 20px; }
 
   /* TABLES */
   .table-wrap { overflow-x: auto; }
@@ -1730,6 +1735,7 @@
     /* Stat pills — compact on mobile */
     .stat-pill { padding: 12px 14px; }
     .stat-pill .value { font-size: 22px; }
+    .stat-pill .value.stat-value-tight { font-size: 16px; }
     .stat-pill .label { font-size: 9px; }
 
     /* Cards */
@@ -2030,7 +2036,7 @@
       </div>
       <div class="stat-pill">
         <span class="label">Defending Champ</span>
-        <span class="value" id="stat-champ" style="font-size:16px;">—</span>
+        <span class="value stat-value-tight" id="stat-champ">—</span>
       </div>
     </div>
 
