@@ -226,6 +226,92 @@
   /* TABLES */
   .table-wrap { overflow-x: auto; }
 
+  /* Standings table specifically: forces reliable horizontal scroll on
+     narrow viewports (rather than depending on whether team/manager names
+     happen to be long enough to overflow on their own) now that it no
+     longer hides columns on mobile — see the removed .standings-col-*
+     mobile rule above. Only this table gets a min-width; every other
+     table on the site keeps its existing organic-overflow behavior. */
+  .standings-table { min-width: 760px; }
+
+  /* Commissioner's Coefficient — standings-table cell + its breakdown modal.
+     See claude/commissioners-coefficient-plan.md. */
+  .coefficient-cell-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 2px 4px;
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border-radius: 6px;
+  }
+  .coefficient-cell-btn:hover { background: var(--surface2); }
+  .coefficient-cell-btn .coefficient-value { font-size: 14px; font-weight: 600; }
+  .coefficient-cell-btn .badge { font-size: 10px; padding: 1px 5px; }
+
+  .coefficient-modal-header { margin-bottom: 16px; }
+  .coefficient-modal-window { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .coefficient-modal-window strong { color: var(--accent); font-size: 15px; }
+
+  .coefficient-season-row {
+    border-top: 1px solid var(--border);
+    padding: 10px 0;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .coefficient-season-row:last-child { border-bottom: 1px solid var(--border); }
+  .coefficient-season-year {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 16px;
+    letter-spacing: 1px;
+    color: var(--text);
+    flex-shrink: 0;
+    width: 44px;
+  }
+  .coefficient-season-chips { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; }
+  .coefficient-chip {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 2px 7px;
+    font-size: 11px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .coefficient-chip b { color: var(--text); }
+  .coefficient-chip-negative b { color: #e0655f; }
+  .coefficient-season-subtotal {
+    font-family: 'DM Mono', monospace;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--accent);
+    flex-shrink: 0;
+    padding-top: 2px;
+  }
+  .coefficient-season-empty { color: var(--muted); font-size: 12px; padding: 4px 0; }
+
+  .coefficient-modal-legend {
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+  .coefficient-modal-legend-title {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .coefficient-modal-legend ul { list-style: none; padding: 0; margin: 0; }
+  .coefficient-modal-legend li { font-size: 12px; color: var(--muted); line-height: 1.7; }
+
   table {
     width: 100%;
     border-collapse: collapse;
@@ -1623,10 +1709,15 @@
     .card { padding: 16px 14px; }
     .card-title { font-size: 15px; letter-spacing: 1.5px; margin-bottom: 12px; }
 
-    /* Tables — hide less important columns on mobile */
-    .standings-col-manager { display: none; }
-    .standings-col-pa      { display: none; }
-    .standings-col-streak  { display: none; }
+    /* Tables — the standings table used to hide Manager/PA/Streak outright
+       on mobile via these classes. Replaced per Joe's ask: instead of
+       dropping columns, the table now scrolls horizontally (see
+       .standings-table's min-width below + the shared .table-wrap scroll
+       hint) so every column, including the new Commissioner's Coefficient
+       one, stays reachable rather than silently disappearing. The
+       standings-col-* classes are left in the markup (harmless without a
+       rule here) in case a future column ever wants the same hide-instead-
+       of-scroll treatment. */
 
     thead th { padding: 6px 8px; font-size: 9px; }
     tbody td { padding: 9px 8px; font-size: 12px; }
@@ -1747,6 +1838,20 @@
   </div>
 </div>
 
+<!-- Commissioner's Coefficient breakdown modal — reuses the welcome-modal
+     overlay/card CSS for visual consistency (same overlay/card look) rather
+     than a new modal system, with its own ids since it's a simple show/close
+     popup, not a multi-screen carousel. See claude/commissioners-coefficient-plan.md
+     and coefficientCellHtml()/openCoefficientModal() in the script below. -->
+<div class="welcome-modal-overlay" id="coefficient-modal-overlay" style="display:none;">
+  <div class="welcome-modal" role="dialog" aria-modal="true" aria-labelledby="coefficient-modal-title-text">
+    <button type="button" class="welcome-modal-skip" id="coefficient-modal-close">✕</button>
+    <div class="welcome-modal-icon">👑</div>
+    <div class="welcome-modal-title" id="coefficient-modal-title-text">Commissioner's Coefficient</div>
+    <div id="coefficient-modal-body"></div>
+  </div>
+</div>
+
 <!-- HEADER -->
 <header>
   <span class="logo">BAD BATCH HQ</span>
@@ -1815,7 +1920,7 @@
     <div class="card fade-up" style="margin-bottom:24px;">
       <div class="card-title">Current Standings</div>
       <div class="table-wrap">
-        <table>
+        <table class="standings-table">
           <thead>
             <tr>
               <th>#</th>
@@ -1826,10 +1931,11 @@
               <th>PF</th>
               <th class="standings-col-pa">PA</th>
               <th class="standings-col-streak">Streak</th>
+              <th class="standings-col-coefficient">Commissioner's Coefficient</th>
             </tr>
           </thead>
           <tbody id="standings-body">
-            <tr><td colspan="8" style="text-align:center;color:var(--muted);padding:32px;">Loading standings...</td></tr>
+            <tr><td colspan="9" style="text-align:center;color:var(--muted);padding:32px;">Loading standings...</td></tr>
           </tbody>
         </table>
       </div>
@@ -2522,6 +2628,14 @@ async function loadSeasonData(season) {
   // Fetch winners bracket (playoff results)
   const winnersbracket = await apiFetch(`/league/${leagueId}/winners_bracket`).catch(() => []);
 
+  // Losers bracket (Toilet Bowl / consolation results) — added for the
+  // Commissioner's Coefficient's Sacko criterion. Not used elsewhere on the
+  // site. Per Joe, this league's Toilet Bowl has sometimes been manually
+  // seeded, so this data isn't trusted blindly the way winners_bracket is —
+  // resolveSacko() below only falls back to it for a season with no
+  // SACKO_OVERRIDES entry. See claude/commissioners-coefficient-plan.md.
+  const losersbracket = await apiFetch(`/league/${leagueId}/losers_bracket`).catch(() => []);
+
   // Fetch this season's league info (needed for playoff_week_start etc.)
   const seasonLeagueInfo = await apiFetch(`/league/${leagueId}`).catch(() => null);
 
@@ -2560,6 +2674,7 @@ async function loadSeasonData(season) {
     rosters: seasonRosters,
     transactions: allTx,
     winnersbracket,
+    losersbracket,
     draftInfo,
   };
 }
@@ -3044,8 +3159,13 @@ function computeSeasonStandings(season) {
       const [a, b] = entries;
       [a, b].forEach((side, idx) => {
         const opp = idx === 0 ? b : a;
-        if (!stats[side.roster_id]) stats[side.roster_id] = { wins: 0, losses: 0, pf: 0 };
+        if (!stats[side.roster_id]) stats[side.roster_id] = { wins: 0, losses: 0, pf: 0, pa: 0 };
         stats[side.roster_id].pf += side.points || 0;
+        // Points against — added alongside pf so the offseason/final-standings
+        // fallback path (the one used for a season whose roster.settings got
+        // zeroed out, e.g. 2025's post-rollover wipe) can show a real PA
+        // instead of a permanent "—". See renderDashboard().
+        stats[side.roster_id].pa += opp.points || 0;
         if ((side.points || 0) > (opp.points || 0)) stats[side.roster_id].wins++;
         else stats[side.roster_id].losses++;
       });
@@ -3101,6 +3221,223 @@ function computePlayoffRecords() {
     });
   });
   return records;
+}
+
+// ============================================================
+// COMMISSIONER'S COEFFICIENT
+// ============================================================
+// Multi-season prestige leaderboard shown as a column on the Dashboard
+// standings table. Full design/decision history lives in
+// claude/commissioners-coefficient-plan.md — summary of the scoring, all
+// per season in the window:
+//   1 pt   each regular season win
+//   3 pts  most regular season points that season (tie-aware — every
+//          co-leader gets it; this is a scoring mechanic in a running
+//          tally, not a "shared weekly award")
+//   2 pts  first-round bye (derived from that season's real bracket
+//          structure, not hardcoded to "top 2 seeds")
+//   2 pts  each playoff win not counting the championship game (the
+//          3rd-place game, if the bracket has one, counts here too —
+//          it's a real bracket game and isn't the championship)
+//   1 pt   championship-game appearance — LOSER of the title game only;
+//          winning it does not also count as an appearance (Joe's
+//          explicit call, doesn't stack with the 5-pt win below)
+//   5 pts  championship win
+//  -1 pt   Sacko (loser of the Toilet Bowl / losers-bracket final)
+//   1 pt   each week that team had the single highest score, regular
+//          season only (tie-aware, same convention as the 3-pt criterion)
+//
+// WINDOW: the last 5 FULLY COMPLETED seasons — never the season still in
+// progress, and it does not shift week to week. It only moves once, all
+// at once, when the current season's championship game is actually
+// decided. See getCoefficientWindow()/seasonFullyComplete() below.
+
+// Confirmed directly by Joe — no losers_bracket derivation needed for any
+// of these seasons. Toilet Bowl seeding has sometimes been done by hand in
+// this league, so Sleeper's own losers_bracket data isn't trusted blindly
+// (see resolveSacko()); this list is authoritative whenever a season has
+// an entry here. Extend this by hand each year once that year's real
+// Sacko is known, rather than depending on the bracket derivation working
+// correctly for a manually-seeded consolation bracket.
+const SACKO_OVERRIDES = {
+  '2021': 'clinteastwood96',
+  '2022': 'DarthRaggy',
+  '2023': 'BryceJohnson',
+  '2024': 'coop3345',
+  '2025': 'LoloMitchell',
+};
+
+// Is this season fully done — including its championship game, not just
+// its regular season? Deliberately stricter than regularSeasonEnded() (used
+// elsewhere for the trade-grading lock): the Coefficient window must never
+// include the season currently in progress, even in the unlikely case its
+// regular season alone has technically finished playing.
+function seasonFullyComplete(season) {
+  const currentSeason = state.league?.season || KNOWN_LATEST_SEASON;
+  if (season === currentSeason) return false;
+  const sd = state.seasonData[season];
+  if (!sd) return false;
+  const champGame = (sd.winnersbracket || []).find(g => g.p === 1);
+  return !!(champGame && champGame.w != null && champGame.l != null);
+}
+
+// The rolling window: the last 5 seasons (chronological order preserved)
+// whose championship has actually been decided. Frozen for the entire
+// current season — see seasonFullyComplete().
+function getCoefficientWindow() {
+  return SEASONS.filter(s => seasonFullyComplete(s)).slice(-5);
+}
+
+// Sacko for one season: SACKO_OVERRIDES first (covers every season in the
+// current window as of this writing), falling back to a best-effort
+// losers_bracket derivation — the loser of that bracket's own final
+// placement game (highest `p`) — ONLY when no override is set. This
+// fallback is unverified against real data and is expected to only ever
+// actually run for a future season Joe hasn't confirmed yet.
+function resolveSacko(season, sd) {
+  const overrideName = SACKO_OVERRIDES[season];
+  if (overrideName) {
+    const mgr = getAllManagers().find(m => (m.display_name || '').toLowerCase() === overrideName.toLowerCase());
+    if (mgr) return mgr.roster_id;
+    console.warn(`SACKO_OVERRIDES has "${overrideName}" for ${season} but no manager with that display_name exists — falling back to derived losers_bracket data.`);
+  }
+  const bracket = (sd && sd.losersbracket) || [];
+  const decided = bracket.filter(g => g.p != null && g.w != null && g.l != null);
+  if (decided.length === 0) return null;
+  const finalGame = decided.reduce((worst, g) => (g.p > worst.p ? g : worst), decided[0]);
+  return finalGame.l;
+}
+
+// Per-roster raw Coefficient inputs for a single season — wins, most-points
+// flag, bye flag, playoff win count, championship appearance/win flags,
+// Sacko flag, and weekly-high-score count. Point values are applied by the
+// caller (computeCommissionerCoefficient) so this stays a pure "what
+// actually happened" computation.
+function computeSeasonCoefficientStats(season) {
+  const sd = state.seasonData[season];
+  const stats = {};
+  const ensure = rid => { if (!stats[rid]) stats[rid] = { wins: 0, seasonPoints: 0, mostPoints: false, bye: false, playoffWins: 0, champAppearance: false, champWin: false, sacko: false, weeklyHighs: 0 }; };
+  getAllManagers().forEach(m => ensure(m.roster_id));
+
+  // Regular season wins + season point total, from state.allMatchups —
+  // already regular-season-only and already excludes placeholder/live-week
+  // entries (see buildAllMatchups()). Tie games (a real possibility per the
+  // site-wide convention documented there — score comparison only, no
+  // separate tie bucket) credit a win to neither side.
+  const seasonGames = state.allMatchups.filter(g => g.season === season);
+  seasonGames.forEach(g => {
+    ensure(g.roster1); ensure(g.roster2);
+    stats[g.roster1].seasonPoints += g.pts1;
+    stats[g.roster2].seasonPoints += g.pts2;
+    if (g.pts1 > g.pts2) stats[g.roster1].wins++;
+    else if (g.pts2 > g.pts1) stats[g.roster2].wins++;
+  });
+
+  // Most regular season points — tie-aware.
+  if (seasonGames.length > 0) {
+    const withPoints = Object.entries(stats).map(([rid, s]) => ({ rid, pts: s.seasonPoints }));
+    tiedLeaders(withPoints, e => e.pts, 'max').forEach(l => { stats[l.rid].mostPoints = true; });
+  }
+
+  // Highest score of the week — regular season only, tie-aware, one shot
+  // per week (not just once for the season).
+  const weeks = [...new Set(seasonGames.map(g => g.week))];
+  weeks.forEach(week => {
+    const weekEntries = [];
+    seasonGames.filter(g => g.week === week).forEach(g => {
+      weekEntries.push({ rid: g.roster1, pts: g.pts1 });
+      weekEntries.push({ rid: g.roster2, pts: g.pts2 });
+    });
+    tiedLeaders(weekEntries, e => e.pts, 'max').forEach(l => { stats[l.rid].weeklyHighs++; });
+  });
+
+  // Bracket-derived: byes, playoff wins (excl. championship), championship
+  // appearance/win. Sleeper's winners_bracket entries carry `r` (round),
+  // `t1`/`t2` (participants, once known), `w`/`l` (once decided), and `p`
+  // (the place awarded to the winner — p===1 is always the championship
+  // game). A team has a first-round bye if it appears somewhere in the
+  // bracket but never as a round-1 participant.
+  const bracket = (sd && sd.winnersbracket) || [];
+  const champGame = bracket.find(g => g.p === 1);
+  const round1Participants = new Set();
+  bracket.filter(g => g.r === 1).forEach(g => {
+    if (g.t1 != null) round1Participants.add(g.t1);
+    if (g.t2 != null) round1Participants.add(g.t2);
+  });
+  const allBracketTeams = new Set();
+  bracket.forEach(g => { [g.t1, g.t2, g.w, g.l].forEach(rid => { if (rid != null) allBracketTeams.add(rid); }); });
+  allBracketTeams.forEach(rid => {
+    ensure(rid);
+    if (!round1Participants.has(rid)) stats[rid].bye = true;
+  });
+
+  bracket.forEach(game => {
+    if (game.w == null || game.l == null) return; // not decided
+    ensure(game.w); ensure(game.l);
+    if (champGame && game === champGame) {
+      stats[game.w].champWin = true;
+      stats[game.l].champAppearance = true; // loser only — see decision above
+    } else {
+      stats[game.w].playoffWins++;
+    }
+  });
+
+  // Sacko
+  const sackoRid = resolveSacko(season, sd);
+  if (sackoRid != null) { ensure(sackoRid); stats[sackoRid].sacko = true; }
+
+  return stats;
+}
+
+// The full rolling-window Coefficient: totals per roster, plus each
+// roster's per-season point breakdown (for the modal) and the set of
+// current #1 leader(s) (tie-aware — the standings badge, not a separate
+// banner per Joe's call).
+function computeCommissionerCoefficient() {
+  const window = getCoefficientWindow();
+  const totals = {};
+  getAllManagers().forEach(m => { totals[m.roster_id] = { total: 0, seasons: {} }; });
+
+  window.forEach(season => {
+    const seasonStats = computeSeasonCoefficientStats(season);
+    Object.entries(seasonStats).forEach(([ridStr, s]) => {
+      const rid = Number(ridStr);
+      if (!totals[rid]) totals[rid] = { total: 0, seasons: {} };
+      const pts = {
+        wins: s.wins,
+        mostPoints: s.mostPoints ? 3 : 0,
+        bye: s.bye ? 2 : 0,
+        playoffWins: s.playoffWins * 2,
+        champAppearance: s.champAppearance ? 1 : 0,
+        champWin: s.champWin ? 5 : 0,
+        sacko: s.sacko ? -1 : 0,
+        weeklyHighs: s.weeklyHighs,
+      };
+      const subtotal = Object.values(pts).reduce((a, b) => a + b, 0);
+      totals[rid].seasons[season] = { ...pts, subtotal, raw: s };
+      totals[rid].total += subtotal;
+    });
+  });
+
+  const entries = Object.entries(totals).map(([rid, t]) => ({ rid: Number(rid), total: t.total }));
+  const leaderIds = new Set(window.length > 0 ? tiedLeaders(entries, e => e.total, 'max').map(e => e.rid) : []);
+
+  return { window, totals, leaderIds };
+}
+
+// Small helper: the standings table's Commissioner's Coefficient <td>,
+// shared by both the offseason and in-season row templates in
+// renderDashboard(). A crown badge marks the current #1 (tie-aware); the
+// whole cell is a button opening the per-owner breakdown modal.
+function coefficientCellHtml(rosterId, coefficient) {
+  const entry = coefficient.totals[rosterId];
+  const total = entry ? entry.total : 0;
+  const isLeader = coefficient.leaderIds.has(rosterId);
+  return `<td class="standings-col-coefficient">
+    <button type="button" class="coefficient-cell-btn" onclick="openCoefficientModal(${rosterId})" title="See the Commissioner's Coefficient breakdown">
+      <span class="coefficient-value">${total}</span>${isLeader ? ' <span class="badge badge-gold">👑</span>' : ''}
+    </button>
+  </td>`;
 }
 
 // ============================================================
@@ -3363,6 +3700,11 @@ function renderDashboard() {
 
   const tbody = document.getElementById('standings-body');
 
+  // Commissioner's Coefficient — one computation feeds both row templates
+  // below. See computeCommissionerCoefficient() for the full scoring logic
+  // and claude/commissioners-coefficient-plan.md for the design history.
+  const coefficient = computeCommissionerCoefficient();
+
   // During offseason, show final standings from last completed season
   if (isOffseason && lastCompletedSeason) {
     const sd = state.seasonData[lastCompletedSeason];
@@ -3385,6 +3727,11 @@ function renderDashboard() {
       const w = cs ? cs.wins : (r.settings?.wins || 0);
       const l = cs ? cs.losses : (r.settings?.losses || 0);
       const pf = cs ? cs.pf.toFixed(2) : ((r.settings?.fpts || 0) + (r.settings?.fpts_decimal || 0) / 100).toFixed(2);
+      // Points against — previously hardcoded to "—" here (a real bug, this
+      // column was simply never populated on the offseason/final-standings
+      // view). Uses the same computed-fallback-for-wiped-data pattern as PF
+      // just above; computeSeasonStandings() now tracks `pa` too (see there).
+      const pa = cs ? cs.pa.toFixed(2) : ((r.settings?.ppts || 0) + (r.settings?.ppts_decimal || 0) / 100).toFixed(2);
       const place = placements[r.roster_id];
       let badge = '';
       if (place === 1) badge = '<span class="badge badge-gold">🏆 Champ</span>';
@@ -3392,12 +3739,14 @@ function renderDashboard() {
       else if (place === 3) badge = '<span class="badge badge-blue">🥉</span>';
       return `<tr>
         <td class="rank-num ${i < 3 ? 'top3' : ''}">${i + 1}</td>
-        <td colspan="2">${avatarEl(m.avatar, m.display_name)}<span class="team-name">${m.team_name}</span> <span style="color:var(--muted);font-size:11px;">${m.display_name}</span>${badge ? ` ${badge}` : ''}</td>
+        <td>${avatarEl(m.avatar, m.display_name)}<span class="team-name">${m.team_name}</span>${badge ? ` ${badge}` : ''}</td>
+        <td class="standings-col-manager" style="color:var(--muted);font-size:12px;">${m.display_name}</td>
         <td class="win">${w}</td>
         <td class="loss">${l}</td>
         <td style="font-family:'DM Mono',monospace;font-size:12px;">${pf}</td>
-        <td class="standings-col-pa">—</td>
+        <td class="standings-col-pa" style="font-family:'DM Mono',monospace;font-size:12px;">${pa}</td>
         <td class="standings-col-streak"></td>
+        ${coefficientCellHtml(r.roster_id, coefficient)}
       </tr>`;
     }).join('');
     return;
@@ -3411,7 +3760,7 @@ function renderDashboard() {
   });
 
   if (sorted.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:32px;">No standings data available</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:32px;">No standings data available</td></tr>';
     return;
   }
 
@@ -3438,6 +3787,7 @@ function renderDashboard() {
       <td style="font-family:'DM Mono',monospace;font-size:12px;">${pf}</td>
       <td class="standings-col-pa" style="font-family:'DM Mono',monospace;font-size:12px;">${pa}</td>
       <td class="standings-col-streak ${streakClass}" style="font-family:'DM Mono',monospace;font-size:12px;">${streakStr}</td>
+      ${coefficientCellHtml(r.roster_id, coefficient)}
     </tr>`;
   }).join('');
 }
@@ -6711,6 +7061,96 @@ function initWelcomeWalkthrough() {
 }
 
 // ============================================================
+// COMMISSIONER'S COEFFICIENT MODAL
+// ============================================================
+// Single source of truth for both the modal's per-season chips and its
+// "how it's scored" legend, so the two can never drift out of sync with
+// each other. `pts` reads a season breakdown object (see
+// computeCommissionerCoefficient()); `label` formats that season's chip
+// text (only rendered when the season's value for this key is non-zero).
+const COEFFICIENT_CRITERIA = [
+  { key: 'wins', label: v => `${v} reg. season win${v === 1 ? '' : 's'}`, legend: '1 pt per regular season win' },
+  { key: 'mostPoints', label: () => 'Most points that season', legend: '3 pts — most regular season points that season' },
+  { key: 'bye', label: () => 'First-round bye', legend: '2 pts — first-round playoff bye' },
+  { key: 'playoffWins', label: v => `${v / 2} playoff win${v / 2 === 1 ? '' : 's'}`, legend: '2 pts per playoff win (not the championship)' },
+  { key: 'champAppearance', label: () => 'Championship appearance', legend: '1 pt — championship-game appearance (runner-up only)' },
+  { key: 'champWin', label: () => 'Championship win', legend: '5 pts — championship win' },
+  { key: 'sacko', label: () => 'Sacko', legend: '−1 pt — Sacko (Toilet Bowl last place)' },
+  { key: 'weeklyHighs', label: v => `${v} weekly high score${v === 1 ? '' : 's'}`, legend: '1 pt per week with the highest score (regular season only)' },
+];
+
+function coefficientModalBodyHtml(rosterId, coefficient) {
+  const m = getManager(rosterId);
+  const entry = coefficient.totals[rosterId] || { total: 0, seasons: {} };
+  const window = coefficient.window;
+
+  const windowLabel = window.length > 0
+    ? `${window[0]}–${window[window.length - 1]}`
+    : 'No completed seasons in range yet';
+
+  const seasonRows = [...window].reverse().map(season => {
+    const s = entry.seasons[season];
+    if (!s) return `<div class="coefficient-season-row"><div class="coefficient-season-year">${season}</div><div class="coefficient-season-empty">No data</div></div>`;
+    // s[key] here is already the POINT value for that criterion (see
+    // computeCommissionerCoefficient — wins/weeklyHighs are 1:1, playoffWins
+    // is raw-count*2, the rest are flat 3/2/1/5/-1). label() divides back
+    // out to a human count where needed (e.g. playoffWins/2) for the chip
+    // text, while the bold number always shows the actual point value.
+    const chips = COEFFICIENT_CRITERIA
+      .filter(c => s[c.key])
+      .map(c => {
+        const v = s[c.key];
+        const sign = v > 0 ? '+' : '';
+        return `<span class="coefficient-chip ${v < 0 ? 'coefficient-chip-negative' : ''}">${c.label(v)} <b>${sign}${v}</b></span>`;
+      });
+    return `<div class="coefficient-season-row">
+      <div class="coefficient-season-year">${season}</div>
+      <div class="coefficient-season-chips">${chips.length ? chips.join('') : '<span class="coefficient-season-empty">No qualifying criteria</span>'}</div>
+      <div class="coefficient-season-subtotal">${s.subtotal >= 0 ? '+' : ''}${s.subtotal}</div>
+    </div>`;
+  }).join('');
+
+  const legend = COEFFICIENT_CRITERIA.map(c => `<li>${c.legend}</li>`).join('');
+
+  return `
+    <div class="coefficient-modal-header">
+      <div>${m.team_name} <span style="color:var(--muted);font-size:12px;">${m.display_name}</span></div>
+      <div class="coefficient-modal-window">${windowLabel} · Total: <strong>${entry.total}</strong></div>
+    </div>
+    <div class="coefficient-season-list">${seasonRows || '<div class="coefficient-season-empty">No completed seasons in the current window yet.</div>'}</div>
+    <div class="coefficient-modal-legend">
+      <div class="coefficient-modal-legend-title">How it's scored, per season in the window</div>
+      <ul>${legend}</ul>
+    </div>
+  `;
+}
+
+function openCoefficientModal(rosterId) {
+  const overlay = document.querySelector('#coefficient-modal-overlay');
+  const body = document.querySelector('#coefficient-modal-body');
+  if (!overlay || !body) return;
+  const coefficient = computeCommissionerCoefficient();
+  body.innerHTML = coefficientModalBodyHtml(rosterId, coefficient);
+  overlay.style.display = 'flex';
+}
+
+function closeCoefficientModal() {
+  const overlay = document.querySelector('#coefficient-modal-overlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+function initCoefficientModal() {
+  const closeBtn = document.querySelector('#coefficient-modal-close');
+  if (closeBtn) closeBtn.onclick = closeCoefficientModal;
+  const overlay = document.querySelector('#coefficient-modal-overlay');
+  if (overlay) {
+    overlay.addEventListener('click', (e) => {
+      if (e.target.id === 'coefficient-modal-overlay') closeCoefficientModal();
+    });
+  }
+}
+
+// ============================================================
 // INIT
 // ============================================================
 async function init() {
@@ -6774,6 +7214,7 @@ async function init() {
 init();
 initWelcomeWalkthrough();
 initWhatsNewBanner();
+initCoefficientModal();
 </script>
 </body>
 </html>
