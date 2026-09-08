@@ -93,7 +93,13 @@ function doGet(e) {
   }
 
   if (action === 'polls') {
-    return jsonResponse({ ok: true, polls: getAllPolls(), votes: getAllPollVotes() });
+    // participants: real names who've voted on an anonymous-voting poll, no
+    // option attached — safe to send to the client since it never reveals a
+    // choice, only that someone voted. Lets index.html unlock an anonymous
+    // poll's results by name (so it stays unlocked across a manager's other
+    // devices/browsers), the same way a non-anonymous poll already does via
+    // votes' real voterName field.
+    return jsonResponse({ ok: true, polls: getAllPolls(), votes: getAllPollVotes(), participants: getAllPollParticipants() });
   }
 
   if (action === 'matchuppicks') {

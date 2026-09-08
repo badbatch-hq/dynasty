@@ -5769,6 +5769,11 @@ const ANON_VOTER_KEY = 'dynastyhq_anon_voter_id';
 let _pollsLoaded = false;
 let _allPolls = [];
 let _allPollVotes = [];
+// Real names who've voted on an anonymous-voting poll — no option attached,
+// so this never reveals a choice, only that someone (by name) participated.
+// Used to unlock that poll's results across a manager's other devices, since
+// the anon-id-keyed vote itself (see getAnonVoterId()) can't cross devices.
+let _allPollParticipants = [];
 // 'active' shows open (not-yet-closed) polls, same as always; 'history' flips
 // the poll card list to closed polls only, newest-closed first, with the
 // winning option highlighted. Toggled via #poll-history-toggle; resets to
@@ -5915,6 +5920,7 @@ async function refreshPolls() {
     if (data.ok) {
       _allPolls = data.polls;
       _allPollVotes = data.votes;
+      _allPollParticipants = data.participants || [];
     }
   } catch (e) {
     console.warn('Failed to load polls:', e);
@@ -5995,7 +6001,18 @@ function renderPollCards() {
     // name that hasn't voted yet, which looked like results randomly
     // "disappearing." `myVote` is kept as a fallback for a vote cast before
     // this tracking existed.
-    const resultsVisible = closed || getVotedPollIds().has(poll.pollId) || !!myVote;
+    //
+    // For a non-anonymous poll this already syncs across a manager's other
+    // devices for free, since `myVote` matches on the real voterName. An
+    // anonymous poll can't do that the same way (its vote is keyed to a
+    // per-browser random id, by design — see getAnonVoterId()), so it also
+    // checks _allPollParticipants: real names who've voted on this poll, with
+    // no option attached, so this never learns or reveals what you picked —
+    // only unlocks seeing the tally, the same way voting on this poll from
+    // any other device already would.
+    const votedByNameOnAnon = poll.anonymousVoting && voterName &&
+      _allPollParticipants.some(p => p.pollId === poll.pollId && p.voterName === voterName);
+    const resultsVisible = closed || getVotedPollIds().has(poll.pollId) || !!myVote || votedByNameOnAnon;
 
     // Winner highlighting only applies to closed polls (i.e. the history
     // view) and only once at least one vote's been cast. Tie-aware — every
