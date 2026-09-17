@@ -6768,13 +6768,14 @@ function renderPickemLeaderboard() {
 // ---------- Changelog ----------
 // Dated entries newest first, then anything from before we started dating
 // them. Edit this array directly to add patch notes.
-const CURRENT_BUILD_VERSION = '2026-09-05.1';
+const CURRENT_BUILD_VERSION = '2026-09-16.1';
 
 // One consolidated summary entry for everything built before leaguemates
 // ever saw this site, so the first thing they read isn't a pile of
 // internal build-order trivia. Real patch notes start fresh from here —
 // add new dated entries above this one as things actually ship.
 const CHANGELOG = [
+  { date: '2026-09-16', text: 'Fixed a handful of Week 1 data bugs: the current-week indicator was stuck a week behind, Points Against on Standings didn\'t match real opponent scores, and the Matchup Pick\'em leaderboard wasn\'t showing anyone\'s picks. All three are pulling correct, final numbers now. Weekly League News recaps also post automatically going forward instead of waiting on a manual publish.' },
   { date: '2026-09-05', text: 'Bad Batch HQ is live — standings and full league history, head-to-head grudge matches, a trade log that grades every deal in hindsight, a rookie draft order calculator, Prophecies predictions, automated League News, and Polls. Plus a first-visit walkthrough and this Changelog/quick-links page. More on the way.' },
 ];
 
