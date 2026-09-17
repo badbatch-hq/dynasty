@@ -2836,17 +2836,15 @@ function buildAllMatchups() {
   state.allMatchupsAll = [];
 
   // For whichever season is CURRENTLY being played, Sleeper's matchup data
-  // updates live throughout the week — league.settings.last_scored_leg
-  // ticks up as soon as the week's first stats come in (e.g. Thursday
-  // night), not once the week actually finishes. A game pulled mid-week
-  // can have one side's real partial score against an opponent who simply
-  // hasn't kicked off yet, which would otherwise get counted everywhere
-  // downstream (H2H, streaks, Trophy Case) as a real, final result — and a
-  // side sitting at 0 before its games start would wrongly look like a
-  // historic low score. Only weeks strictly BEFORE that live week count as
-  // final for the current season; every other (past) season's own
-  // last_scored_leg reflects its true completed final week, so this only
-  // ever trims data for the season still in progress.
+  // updates live throughout a week that hasn't finished yet. Corrected
+  // 2026-09-16: league.settings.last_scored_leg is the last week Sleeper has
+  // FULLY finalized, not the live in-progress week itself (that's
+  // last_scored_leg + 1) — an earlier version of this cutoff excluded
+  // last_scored_leg's own week by mistake, which meant a fully-decided week
+  // never made it into state.allMatchups at all. Weeks up to and including
+  // last_scored_leg count as final for the current season; every other
+  // (past) season's own last_scored_leg reflects its true completed final
+  // week, so this only ever trims data for the season still in progress.
   const currentSeason = state.league?.season || KNOWN_LATEST_SEASON;
 
   for (const season of SEASONS) {
@@ -2858,7 +2856,7 @@ function buildAllMatchups() {
 
     for (const { week, data } of sd.matchups) {
       if (!data || data.length === 0) continue;
-      if (liveWeekCutoff != null && week >= liveWeekCutoff) continue;
+      if (liveWeekCutoff != null && week > liveWeekCutoff) continue;
 
       // Group by matchup_id
       const byMatchup = {};
@@ -3805,7 +3803,7 @@ function renderDashboard() {
   const lastScoredWeek = state.league.settings?.last_scored_leg || 0;
   const nflStateCurrent = state.nflState && state.nflState.season === currentSeason;
   const seasonStarted = nflStateCurrent && state.nflState.season_type === 'regular' && (state.nflState.week || 0) >= 1;
-  const currentWeek = lastScoredWeek > 0 ? lastScoredWeek : (seasonStarted ? state.nflState.week : 0);
+  const currentWeek = seasonStarted ? Math.max(lastScoredWeek, state.nflState.week) : lastScoredWeek;
   const isOffseason = currentWeek === 0;
 
   // Determine the last completed season (for offseason fallback)
@@ -3912,11 +3910,20 @@ function renderDashboard() {
     return;
   }
 
-  // In-season: show live standings from roster settings
+  // In-season: show live standings — computed from state.allMatchups (see
+  // computeLiveSafeSeasonStats) rather than each roster's own settings
+  // fields. roster.settings.wins/losses/fpts update live per-completed-game
+  // (not per-completed-week), and roster.settings.ppts (points against) has
+  // been observed not to reconcile against real opponent scores for this
+  // league at all (total PA didn't match total PF for a fully-decided week —
+  // reported by Joe 2026-09-16). state.allMatchups is symmetric by
+  // construction (one side's points are literally the other's PA), so it
+  // can't have that problem.
+  const liveStats = computeLiveSafeSeasonStats(currentSeason);
   const sorted = [...state.rosters].sort((a, b) => {
-    const wa = a.settings?.wins || 0, wb = b.settings?.wins || 0;
+    const wa = liveStats[a.roster_id]?.wins || 0, wb = liveStats[b.roster_id]?.wins || 0;
     if (wb !== wa) return wb - wa;
-    return (b.settings?.fpts || 0) - (a.settings?.fpts || 0);
+    return (liveStats[b.roster_id]?.pf || 0) - (liveStats[a.roster_id]?.pf || 0);
   });
 
   if (sorted.length === 0) {
@@ -3930,10 +3937,11 @@ function renderDashboard() {
   tbody.innerHTML = sorted.map((r, i) => {
     const m = getManager(r.roster_id);
     const rank = i + 1;
-    const w = r.settings?.wins || 0;
-    const l = r.settings?.losses || 0;
-    const pf = ((r.settings?.fpts || 0) + (r.settings?.fpts_decimal || 0) / 100).toFixed(2);
-    const pa = ((r.settings?.ppts || 0) + (r.settings?.ppts_decimal || 0) / 100).toFixed(2);
+    const cs = liveStats[r.roster_id] || { wins: 0, losses: 0, pf: 0, pa: 0 };
+    const w = cs.wins;
+    const l = cs.losses;
+    const pf = cs.pf.toFixed(2);
+    const pa = cs.pa.toFixed(2);
     const streak = streaks[r.roster_id] || { count: 0, type: '—' };
     const streakStr = streak.type !== '—' ? `${streak.type}${streak.count}` : '—';
     const streakClass = streak.type === 'W' ? 'win' : streak.type === 'L' ? 'loss' : '';
@@ -4649,10 +4657,11 @@ function computeLiveSafeSeasonStats(season) {
       const rid = side === 1 ? m.roster1 : m.roster2;
       const myPts = side === 1 ? m.pts1 : m.pts2;
       const oppPts = side === 1 ? m.pts2 : m.pts1;
-      if (!stats[rid]) stats[rid] = { wins: 0, losses: 0, pf: 0 };
+      if (!stats[rid]) stats[rid] = { wins: 0, losses: 0, pf: 0, pa: 0 };
       if (myPts > oppPts) stats[rid].wins++;
       else stats[rid].losses++;
       stats[rid].pf += myPts;
+      stats[rid].pa += oppPts;
     });
   });
   return stats;
@@ -7031,11 +7040,24 @@ function renderLeagueNewsTeaser() {
     return;
   }
 
-  const parts = [];
-  if (latestCallout) parts.push(`"${latestCallout.title}"`);
-  if (latestReport) parts.push(`Week ${latestReport.week} recap is up`);
-  sub.textContent = parts.join(' · ');
+  // Show whichever is actually more recent, not both stacked forever — once
+  // a new week's report lands it should bump an old evergreen callout out of
+  // the teaser rather than sitting next to it permanently. Per Joe 2026-09-16.
+  const calloutDate = latestCallout ? parseCalloutDate(latestCallout.date) : null;
+  const reportDate = latestReport ? new Date(latestReport.generatedAt) : null;
+
+  sub.textContent = (reportDate && (!calloutDate || reportDate >= calloutDate))
+    ? `Week ${latestReport.week} recap is up`
+    : `"${latestCallout.title}"`;
   teaser.style.display = 'flex';
+}
+
+// Callout dates come back as "MM-DD-YYYY" (see formatCalloutDate() in
+// Code.gs), not ISO — parse by hand rather than trust new Date() with it.
+function parseCalloutDate(str) {
+  const m = /^(\d{2})-(\d{2})-(\d{4})$/.exec(String(str || ''));
+  if (!m) return null;
+  return new Date(Number(m[3]), Number(m[1]) - 1, Number(m[2]));
 }
 
 // ---------- Weekly report card renderers ----------

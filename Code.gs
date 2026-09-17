@@ -1515,7 +1515,7 @@ function generateWeeklyReport(weekOverride) {
   }
 
   reportsSheet.appendRow([
-    season, reportWeek, new Date().toISOString(), 'draft',
+    season, reportWeek, new Date().toISOString(), 'published',
     JSON.stringify(trophies), JSON.stringify(playersOfWeek),
     JSON.stringify(playoffPicture), JSON.stringify(powerRankings),
   ]);
