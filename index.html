@@ -2654,6 +2654,15 @@ async function loadAllData() {
   const displayLeagueId = seasonLeagueIds[KNOWN_LATEST_SEASON] || LEAGUE_ID;
   state.league = await apiFetch(`/league/${displayLeagueId}`);
 
+  // Real-time NFL week/season-type, independent of this league's own
+  // settings.last_scored_leg — that field only updates once Sleeper
+  // finalizes/locks a week's stats, not when the week actually starts (it
+  // can sit at last season's value, or undefined, for days after kickoff
+  // with real live points already on the board). This is what the
+  // dashboard's offseason check uses instead. Never fatal if it fails —
+  // renderDashboard() falls back to the old last_scored_leg check.
+  state.nflState = await apiFetch(`/state/nfl`).catch(() => null);
+
   setLoadStatus('Loading rosters & managers...', 15);
 
   // Current rosters + users from the display league (latest completed season)
@@ -3778,18 +3787,25 @@ function renderDashboard() {
   titleLink.href = LINKOUTS.sleeperUrl;
 
   // Detect offseason: has the current season actually started yet?
-  // Deliberately keyed off state.league.settings.last_scored_leg directly
-  // (live, ticks up as soon as the week's first stats come in — see the
-  // buildAllMatchups() note above) rather than state.allMatchups, which is
-  // intentionally stricter and excludes the in-progress week entirely so
-  // Trophy Case/streaks/Coefficient never see a live partial score. That
-  // strictness is correct for "is this week's data final" but wrong for
-  // "should the dashboard still be showing last season" — Joe's ask: once
-  // the season kicks off, the dashboard should flip to live current
-  // standings and a real week number immediately, not sit on last season's
-  // final standings and "Off" for the entire first week.
+  // Originally keyed off state.league.settings.last_scored_leg alone, on
+  // the assumption it "ticks up as soon as the week's first stats come in"
+  // — that turned out to be wrong (caught 2026-09-10): last_scored_leg only
+  // updates once Sleeper finalizes/locks a week's stats, so it can sit at 0
+  // for days after kickoff with real live week-1 points already showing,
+  // leaving the dashboard stuck showing last season's final standings and
+  // "Off". state.nflState (the global /state/nfl endpoint, fetched in
+  // loadAllData) doesn't have that lag — its `week` ticks up the moment a
+  // week's games start. Use it to detect "season started" and to cover the
+  // week number whenever last_scored_leg hasn't caught up yet; once
+  // last_scored_leg does populate for a week it stays the source of truth
+  // (unchanged from before) since it's what buildAllMatchups() also keys
+  // off for "is this week's data final" — this fix only closes the
+  // window right at kickoff.
   const currentSeason = state.league.season || KNOWN_LATEST_SEASON;
-  const currentWeek = state.league.settings?.last_scored_leg || 0;
+  const lastScoredWeek = state.league.settings?.last_scored_leg || 0;
+  const nflStateCurrent = state.nflState && state.nflState.season === currentSeason;
+  const seasonStarted = nflStateCurrent && state.nflState.season_type === 'regular' && (state.nflState.week || 0) >= 1;
+  const currentWeek = lastScoredWeek > 0 ? lastScoredWeek : (seasonStarted ? state.nflState.week : 0);
   const isOffseason = currentWeek === 0;
 
   // Determine the last completed season (for offseason fallback)
@@ -4614,6 +4630,34 @@ function renderTrophyCase() {
     : '<div class="empty"><div class="empty-icon">🏆</div><p>No historical data loaded yet</p></div>';
 }
 
+// Wins/losses/PF for one season, sourced from state.allMatchups instead of
+// each roster's own settings.wins/losses/fpts. Sleeper updates those
+// per-roster settings live as individual games finish during a week —
+// so a manager whose Thursday game is already decided shows a "final"
+// win while the rest of the league's Sunday games haven't even kicked
+// off yet. state.allMatchups doesn't have that problem: buildAllMatchups()
+// already excludes the current season's still-in-progress week entirely
+// (see its liveWeekCutoff), so a roster with nothing finalized yet simply
+// has no entries here and correctly nets out to 0-0. Used for the History
+// page's current-season row (reported by Joe 2026-09-10: week 1 showed
+// live, partial records mid-week).
+function computeLiveSafeSeasonStats(season) {
+  const stats = {};
+  state.allMatchups.forEach(m => {
+    if (m.season !== season) return;
+    [1, 2].forEach(side => {
+      const rid = side === 1 ? m.roster1 : m.roster2;
+      const myPts = side === 1 ? m.pts1 : m.pts2;
+      const oppPts = side === 1 ? m.pts2 : m.pts1;
+      if (!stats[rid]) stats[rid] = { wins: 0, losses: 0, pf: 0 };
+      if (myPts > oppPts) stats[rid].wins++;
+      else stats[rid].losses++;
+      stats[rid].pf += myPts;
+    });
+  });
+  return stats;
+}
+
 function renderSeasonBlocks() {
   const container = document.getElementById('seasons-container');
   const seasonHtml = [];
@@ -4632,7 +4676,14 @@ function renderSeasonBlocks() {
 
     // Check if roster settings are zeroed (season rolled over) — fall back to matchup-computed standings
     const rosterStatsZeroed = sd.rosters.every(r => (r.settings?.wins || 0) === 0 && (r.settings?.losses || 0) === 0);
-    const computedStats = rosterStatsZeroed ? computeSeasonStandings(season) : null;
+    // The season currently being played needs its own safe source (see
+    // computeLiveSafeSeasonStats) — roster.settings.wins/losses update live
+    // per-completed-game, not per-completed-week, so mid-week they'd show a
+    // partial "record" for whoever's early game already finished.
+    const isLiveCurrentSeason = season === (state.league?.season || KNOWN_LATEST_SEASON);
+    const computedStats = isLiveCurrentSeason
+      ? computeLiveSafeSeasonStats(season)
+      : (rosterStatsZeroed ? computeSeasonStandings(season) : null);
 
     // Sort rosters: playoff-placed teams first (by place), then rest by reg season record
     const sortedRosters = [...sd.rosters].sort((a, b) => {
@@ -4659,7 +4710,10 @@ function renderSeasonBlocks() {
     const rows = sortedRosters.map((r, i) => {
       const m = getManager(r.roster_id, season);
       const place = placements[r.roster_id];
-      const cs = computedStats?.[r.roster_id];
+      // For the live current season, always trust computedStats — even when
+      // a roster has no entry there yet (nothing finalized this week), that
+      // means 0-0, not a fallback to r.settings' live-updating number.
+      const cs = computedStats?.[r.roster_id] || (isLiveCurrentSeason ? { wins: 0, losses: 0, pf: 0 } : null);
       const w = cs ? cs.wins : (r.settings?.wins || 0);
       const l = cs ? cs.losses : (r.settings?.losses || 0);
       const pf = cs ? cs.pf.toFixed(2) : ((r.settings?.fpts || 0) + (r.settings?.fpts_decimal || 0) / 100).toFixed(2);
